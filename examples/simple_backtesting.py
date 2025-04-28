@@ -1,4 +1,6 @@
 from src.core.data_handler import DataHandler
+from src.strategies.rsi_strategy import RSIStrategy
+from src.portfolio.portfolio import Portfolio
 import pandas as pd
 
 # Example usage
@@ -14,9 +16,30 @@ print("Head results:")
 print(dh.data.head(1))
 print("Tail results:")
 print(dh.data.tail(1))
-print("Fetching historical data")
-historical_data = dh.get_historical_data(pd.to_datetime('2025-03-03 15:30:00'))
-print("Head results:")
-print(historical_data.head(1))
-print("Tail results:")
-print(historical_data.tail(1))
+
+# Initialize RSI Strategy
+rsi_strategy = RSIStrategy(data_handler=dh, rsi_period=14, overbought=70, oversold=30)
+print("\nFetching RSI signals")
+signals = rsi_strategy.generate_signals()
+print("Head results (RSI and Signals):")
+print(signals[['Close', 'RSI', 'Signal']].head(5))
+print("Tail results (RSI and Signals):")
+print(signals[['Close', 'RSI', 'Signal']].tail(5))
+print("Shape results (RSI and Signals):")
+print(signals[['Close', 'RSI', 'Signal']].shape)
+print("Value count results (RSI and Signals):")
+print(signals[['Signal']].value_counts())
+
+
+
+# Initialize Portfolio
+portfolio = Portfolio(initial_cash=100000, data_handler=dh, strategy=rsi_strategy)
+portfolio.execute_trades()
+summary = portfolio.get_portfolio_summary()
+print("\nPortfolio Summary")
+print("Final Cash:", summary['final_cash'])
+print("Final Holdings:", summary['final_holdings'])
+print("Trades:")
+print(summary['trades'])
+print("Portfolio Value (last 5):")
+print(summary['portfolio_value'].tail(5))
