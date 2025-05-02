@@ -1,13 +1,14 @@
 import pandas as pd
 import numpy as np
+from src.logging.trade_logger import TradeLogger
 
 class Portfolio:
-    def __init__(self, initial_cash: float, data_handler, strategy):
+    def __init__(self, initial_cash: float, data_handler, strategy, logger: TradeLogger):
         self.initial_cash = initial_cash
         self.cash = initial_cash
         self.data_handler = data_handler
         self.strategy = strategy
-        # Initialize positions with float dtype
+        self.logger = logger
         self.positions = pd.DataFrame(
             index=self.data_handler.data.index,
             columns=['Quantity', 'Price'],
@@ -32,18 +33,31 @@ class Portfolio:
     def execute_trades(self):
         """Execute trades based on strategy signals, including short selling."""
         signals = self.strategy.generate_signals()
+        current_quantity = 0  # Track quantity explicitly
+
+        # Validate index alignment
+        assert signals.index.equals(self.positions.index), "Signal and position indices misaligned"
+
         for date, row in signals.iterrows():
             signal = row['Signal']
             price = row['Close']
             symbol = self.data_handler.tradingsymbol
 
+            # Log signal with context
+            self.logger._log(
+                "SIGNAL",
+                f"Signal: {signal}, RSI: {row.get('RSI', float('nan')):.2f}, Close: {price}, Current Quantity: {current_quantity}, Cash: {self.cash:.2f}",
+                date,
+                {"Signal": signal, "RSI": row.get('RSI', float('nan')), "Close": price, "CurrentQuantity": current_quantity, "Cash": self.cash}
+            )
+
             if signal == 1:  # Buy or Cover Short
-                current_quantity = int(self.positions.loc[:date].iloc[-1]['Quantity'])
                 if current_quantity < 0:  # Cover short position
                     cover_quantity = -current_quantity  # Buy back all shorted shares
                     cost = cover_quantity * price
                     self.cash -= cost
-                    self.positions.loc[date, 'Quantity'] = 0
+                    current_quantity = 0
+                    self.positions.loc[date, 'Quantity'] = current_quantity
                     self.positions.loc[date, 'Price'] = price
                     self.trades = pd.concat([self.trades, pd.DataFrame([{
                         'Date': date,
@@ -53,12 +67,14 @@ class Portfolio:
                         'Price': price,
                         'Value': cost
                     }])], ignore_index=True)
+                    self.logger.log_trade(date, 'Cover', cover_quantity, price, cost)
                 elif current_quantity == 0:  # Buy new long position
                     quantity = int(self.cash // price)
                     if quantity > 0:
                         cost = quantity * price
                         self.cash -= cost
-                        self.positions.loc[date, 'Quantity'] += quantity
+                        current_quantity += quantity
+                        self.positions.loc[date, 'Quantity'] = current_quantity
                         self.positions.loc[date, 'Price'] = price
                         self.trades = pd.concat([self.trades, pd.DataFrame([{
                             'Date': date,
@@ -68,14 +84,15 @@ class Portfolio:
                             'Price': price,
                             'Value': cost
                         }])], ignore_index=True)
+                        self.logger.log_trade(date, 'Buy', quantity, price, cost)
+                else:
+                    self.logger._log("DEBUG", f"Skipped Buy signal: already holding {current_quantity}", date, {})
 
             elif signal == -1:  # Sell or Short
-                current_quantity = int(self.positions.loc[:date].iloc[-1]['Quantity'])
                 if current_quantity > 0:  # Sell existing long position
                     revenue = current_quantity * price
                     self.cash += revenue
-                    self.positions.loc[date, 'Quantity'] -= current_quantity
-                    self.positions.loc[date, 'Price'] = price
+                    self.positions.loc[date, 'Quantity'] = 0
                     self.trades = pd.concat([self.trades, pd.DataFrame([{
                         'Date': date,
                         'Symbol': symbol,
@@ -84,12 +101,15 @@ class Portfolio:
                         'Price': price,
                         'Value': revenue
                     }])], ignore_index=True)
+                    self.logger.log_trade(date, 'Sell', current_quantity, price, revenue)
+                    current_quantity = 0
                 elif current_quantity == 0:  # Initiate short position
-                    short_quantity = int(self.cash // price)  # Short as many shares as cash allows
+                    short_quantity = int((0.5 * self.cash) // price)  # Use 50% of cash for shorts
                     if short_quantity > 0:
                         short_value = short_quantity * price
                         self.cash += short_value
-                        self.positions.loc[date, 'Quantity'] = -short_quantity
+                        current_quantity = -short_quantity
+                        self.positions.loc[date, 'Quantity'] = current_quantity
                         self.positions.loc[date, 'Price'] = price
                         self.trades = pd.concat([self.trades, pd.DataFrame([{
                             'Date': date,
@@ -99,17 +119,25 @@ class Portfolio:
                             'Price': price,
                             'Value': short_value
                         }])], ignore_index=True)
+                        self.logger.log_trade(date, 'Short', short_quantity, price, short_value)
+                    else:
+                        self.logger._log("DEBUG", f"Skipped Short signal: insufficient cash {self.cash:.2f} for price {price}", date, {})
+                else:
+                    self.logger._log("DEBUG", f"Skipped Sell signal: already short {current_quantity}", date, {})
 
             # Update portfolio value
-            holdings_value = self.positions.loc[:date].iloc[-1]['Quantity'] * price
+            holdings_value = current_quantity * price
             self.portfolio_value.loc[date] = {
                 'Cash': self.cash,
                 'Holdings': holdings_value,
                 'Total': self.cash + holdings_value
             }
+            self.logger.log_portfolio(date, self.cash, holdings_value, self.cash + holdings_value, current_quantity)
 
     def get_portfolio_summary(self):
         """Return portfolio value and trades."""
+        print("\nNon-zero Positions:")
+        print(self.positions[self.positions['Quantity'] != 0])
         return {
             'portfolio_value': self.portfolio_value,
             'trades': self.trades,

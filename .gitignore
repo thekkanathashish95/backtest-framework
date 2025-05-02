@@ -14,3 +14,9 @@ __pycache__/
 # IDE files
 .idea/
 
+# Logs
+logs/
+
+# Text files
+*.txt
+
