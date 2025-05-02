@@ -44,3 +44,48 @@ DELETE FROM trade_logs
 conn.commit()
 conn.close()
 print("trade_logs deleted successfully")
+
+
+
+
+# import sqlite3
+# import yaml
+
+# # Load config
+# with open('config/config.yaml', 'r') as f:
+#     config = yaml.safe_load(f)
+# db_path = config['database']['db_path']
+
+# # Create trade_logs table
+# conn = sqlite3.connect(db_path)
+# cursor = conn.cursor()
+# cursor.execute("""
+# CREATE TABLE IF NOT EXISTS trade_logs (
+#     log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+#     run_id TEXT NOT NULL,
+#     timestamp TEXT NOT NULL,
+#     log_type TEXT NOT NULL,
+#     message TEXT NOT NULL,
+#     details JSON
+# )
+# """)
+
+# # Create trades table
+# cursor.execute("""
+# CREATE TABLE IF NOT EXISTS trades (
+#     trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
+#     run_id TEXT NOT NULL,
+#     timestamp TEXT NOT NULL,
+#     symbol TEXT NOT NULL,
+#     action TEXT NOT NULL,
+#     quantity INTEGER NOT NULL,
+#     price FLOAT NOT NULL,
+#     value FLOAT NOT NULL,
+#     fees FLOAT NOT NULL,
+#     net_profit FLOAT
+# )
+# """)
+
+# conn.commit()
+# conn.close()
+# print("trade_logs and trades tables created successfully")

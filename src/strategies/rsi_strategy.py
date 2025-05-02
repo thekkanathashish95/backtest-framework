@@ -2,44 +2,67 @@ import pandas as pd
 import numpy as np
 from src.strategies.base_strategy import BaseStrategy
 from src.logging.trade_logger import TradeLogger
+from typing import Optional
 
 class RSIStrategy(BaseStrategy):
-    def __init__(self, data_handler, rsi_period: int = 14, overbought: float = 70, oversold: float = 30, logger: TradeLogger = None):
+    def __init__(self, data_handler, rsi_period: int = 14, overbought: float = 60, oversold: float = 20, wait_period: int = 5, logger: TradeLogger = None):
         super().__init__(data_handler)
         self.rsi_period = rsi_period
         self.overbought = overbought
         self.oversold = oversold
+        self.wait_period = wait_period
         self.logger = logger
+        self._rsi_cache = pd.Series(index=self.data.index, dtype=float)
+        self._last_calculated_date = None
 
-    def calculate_rsi(self, prices: pd.Series) -> pd.Series:
-        """
-        Calculate RSI for the given price series.
-        """
-        delta = prices.diff()
+    def calculate_rsi(self, prices: pd.Series, end_date: pd.Timestamp) -> float:
+        data_slice = prices.loc[:end_date]
+        if len(data_slice) < self.rsi_period + 1:
+            return np.nan
+        delta = data_slice.diff()
         gain = delta.where(delta > 0, 0).rolling(window=self.rsi_period).mean()
         loss = -delta.where(delta < 0, 0).rolling(window=self.rsi_period).mean()
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
-        return rsi
+        return rsi.iloc[-1]
+
+    def generate_signal(self, date: pd.Timestamp, portfolio: 'Portfolio') -> Optional[int]:
+        if date not in self.data.index:
+            return None
+
+        if portfolio.last_trade_date is not None:
+            time_since_last_trade = (date - portfolio.last_trade_date).total_seconds() / 60
+            if time_since_last_trade < self.wait_period:
+                self.logger._log("DEBUG", f"Skipped signal: within {self.wait_period}-minute wait period (time since last trade: {time_since_last_trade:.2f} minutes)", date, {})
+                return None
+
+        current_data = self.data.loc[date]
+        price = current_data['Close']
+
+        if pd.isna(self._rsi_cache.loc[date]) or self._last_calculated_date != date:
+            rsi = self.calculate_rsi(self.data['Close'], date)
+            self._rsi_cache.loc[date] = rsi
+            self._last_calculated_date = date
+        else:
+            rsi = self._rsi_cache.loc[date]
+
+        if pd.isna(rsi):
+            return None
+
+        current_quantity = portfolio.get_current_quantity(date)
+
+        signal = 0
+        if rsi < self.oversold and current_quantity == 0:
+            signal = 1  # Buy
+        elif rsi > self.overbought and current_quantity == 0:
+            signal = -1  # Short
+        elif rsi < self.oversold and current_quantity < 0:
+            signal = 1  # Cover short
+
+        if self.logger and signal != 0:
+            self.logger.log_signal(date, signal, rsi, price)
+
+        return signal
 
     def generate_signals(self) -> pd.DataFrame:
-        """
-        Generate trading signals based on RSI.
-        Buy (1) when RSI < oversold, Sell (-1) when RSI > overbought, Hold (0) otherwise.
-        """
-        signals = pd.DataFrame(index=self.data.index)
-        signals['Close'] = self.data['Close']
-        signals['RSI'] = self.calculate_rsi(self.data['Close'])
-        signals['Signal'] = 0
-
-        # Generate signals
-        signals.loc[signals['RSI'] < self.oversold, 'Signal'] = 1   # Buy
-        signals.loc[signals['RSI'] > self.overbought, 'Signal'] = -1  # Sell
-
-        # Log signals
-        if self.logger:
-            for date, row in signals.iterrows():
-                if not pd.isna(row['RSI']):  # Skip NaN RSI values
-                    self.logger.log_signal(date, row['Signal'], row['RSI'], row['Close'])
-
-        return signals
+        raise NotImplementedError("Batch signal generation is deprecated. Use generate_signal for sequential processing.")

@@ -30,10 +30,20 @@ class TradeLogger:
         details = {"Signal": signal, "RSI": rsi, "Close": close}
         self._log("SIGNAL", message, timestamp, details)
 
-    def log_trade(self, timestamp: pd.Timestamp, action: str, quantity: int, price: float, value: float):
+    def log_trade(self, timestamp: pd.Timestamp, action: str, quantity: int, price: float, value: float, symbol: str = "ADANIENT", fees: float = 0.0, net_profit: float = None):
         message = f"{action} {quantity} shares at {price}, Value: {value}"
-        details = {"Action": action, "Quantity": quantity, "Price": price, "Value": value}
+        details = {"Action": action, "Quantity": quantity, "Price": price, "Value": value, "Symbol": symbol, "Fees": fees, "NetProfit": net_profit}
         self._log("TRADE", message, timestamp, details)
+
+        # Log to trades table
+        self.cursor.execute(
+            """
+            INSERT INTO trades (run_id, timestamp, symbol, action, quantity, price, value, fees, net_profit)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (self.run_id, timestamp.isoformat(), symbol, action, quantity, price, value, fees, net_profit)
+        )
+        self.conn.commit()
 
     def log_portfolio(self, timestamp: pd.Timestamp, cash: float, holdings: float, total: float, quantity: float):
         message = f"Cash: {cash:.2f}, Holdings: {holdings:.2f}, Total: {total:.2f}, Quantity: {quantity}"
