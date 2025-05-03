@@ -1,10 +1,11 @@
+import pandas as pd
+import numpy as np
 from src.core.data_handler import DataHandler
 from src.strategies.rsi_strategy import RSIStrategy
 from src.portfolio.portfolio import Portfolio
 from src.logging.trade_logger import TradeLogger
 from src.backtest.stress_test import StressTester
 from src.backtest.visualizer import Visualizer
-import pandas as pd
 import yaml
 
 def run_backtest(stress_test: bool = False):
@@ -43,7 +44,7 @@ def run_backtest(stress_test: bool = False):
         dh.data = stress_tester.apply_liquidity_constraint(max_volume_pct=0.1)
         print("Applied stress tests: ±10% price shocks (1% probability), 10% volume limit")
 
-    # Initialize RSI Strategy
+    # Initialize RSI Strategy (Situation 3: base_overbought=60, base_oversold=30)
     rsi_strategy = RSIStrategy(data_handler=dh, rsi_period=14, overbought=60, oversold=30, wait_period=5, logger=logger)
 
     # Initialize Portfolio
@@ -69,7 +70,7 @@ def run_backtest(stress_test: bool = False):
     print("Final Cash:", summary['final_cash'])
     print("Final Holdings:", summary['final_holdings'])
     print("Trades:")
-    print(summary['trades'])
+    print(summary['trades'].shape[0])
     print("Trade Counts by Action:")
     print(summary['trades']['Action'].value_counts())
     print("Portfolio Value (last 5):")

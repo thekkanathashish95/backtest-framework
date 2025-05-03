@@ -1,2 +1,10 @@
 database:
   db_path: "/Users/ashishmathew/Documents/Development/AlgoTrader/database/algo_data.db"
+transaction_costs:
+  brokerage_rate: 0.0003
+  brokerage_min: 0.24
+  stt_ctt_rate: 0.00025
+  transaction_rate: 0.0000297
+  gst_rate: 0.18
+  sebi_rate: 0.000000012
+  stamp_rate: 0.00003
