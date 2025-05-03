@@ -8,7 +8,7 @@ class Metrics:
         Compute performance metrics for a backtest.
         Args:
             portfolio_value: DataFrame with 'Cash', 'Holdings', 'Total' columns.
-            trades: DataFrame with 'Date', 'Action', 'Quantity', 'Price', 'Value' columns.
+            trades: DataFrame with 'Date', 'Action', 'Quantity', 'Price', 'Value', 'Fees', 'NetProfit' columns.
             initial_cash: Initial portfolio cash.
         """
         self.portfolio_value = portfolio_value
@@ -66,18 +66,12 @@ class Metrics:
         """
         if self.trades.empty:
             return 0.0
-        profits = []
-        for i, trade in self.trades.iterrows():
-            if trade['Action'] in ['Sell', 'Cover']:
-                entry = self.trades[(self.trades['Date'] < trade['Date']) & 
-                                  (self.trades['Action'].isin(['Buy', 'Short']))].iloc[-1]
-                if trade['Action'] == 'Sell':
-                    profit = (trade['Price'] - entry['Price']) * trade['Quantity']
-                else:  # Cover
-                    profit = (entry['Price'] - trade['Price']) * trade['Quantity']
-                profits.append(profit)
-        wins = sum(1 for p in profits if p > 0)
-        return (wins / len(profits)) * 100 if profits else 0.0
+        # Consider only exit trades (Sell or Cover) with non-null NetProfit
+        exit_trades = self.trades[self.trades['Action'].isin(['Sell', 'Cover']) & self.trades['NetProfit'].notnull()]
+        if exit_trades.empty:
+            return 0.0
+        wins = (exit_trades['NetProfit'] > 0).sum()
+        return (wins / len(exit_trades)) * 100
 
     def sharpe_ratio(self, risk_free_rate: float = 0.0) -> float:
         """
@@ -101,18 +95,14 @@ class Metrics:
         Returns:
             Profit factor.
         """
-        profits = []
-        for i, trade in self.trades.iterrows():
-            if trade['Action'] in ['Sell', 'Cover']:
-                entry = self.trades[(self.trades['Date'] < trade['Date']) & 
-                                  (self.trades['Action'].isin(['Buy', 'Short']))].iloc[-1]
-                if trade['Action'] == 'Sell':
-                    profit = (trade['Price'] - entry['Price']) * trade['Quantity']
-                else:  # Cover
-                    profit = (entry['Price'] - trade['Price']) * trade['Quantity']
-                profits.append(profit)
-        gross_profits = sum(p for p in profits if p > 0)
-        gross_losses = -sum(p for p in profits if p < 0)
+        if self.trades.empty:
+            return 0.0
+        # Consider only exit trades (Sell or Cover) with non-null NetProfit
+        exit_trades = self.trades[self.trades['Action'].isin(['Sell', 'Cover']) & self.trades['NetProfit'].notnull()]
+        if exit_trades.empty:
+            return 0.0
+        gross_profits = exit_trades[exit_trades['NetProfit'] > 0]['NetProfit'].sum()
+        gross_losses = -exit_trades[exit_trades['NetProfit'] < 0]['NetProfit'].sum()
         return gross_profits / gross_losses if gross_losses > 0 else float('inf')
 
     def get_metrics(self) -> Dict[str, float]:

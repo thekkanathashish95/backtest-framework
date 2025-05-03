@@ -1,2 +1,39 @@
 database:
-  db_path: "/Users/ashishmathew/Documents/Development/AlgoTrader/database/algo_data.db"
+    db_path: "/Users/ashishmathew/Documents/Development/AlgoTrader/database/algo_data.db"
+
+
+strategy:
+  rsi_period: 14
+  overbought: 60
+  oversold: 20
+  wait_period: 5
+
+portfolio:
+  initial_cash: 100000
+  buy_cash_pct: 0.5
+  short_cash_pct: 0.3
+  stop_loss_pct: 0.03
+  take_profit_pct: 0.05
+
+transaction_costs:
+  brokerage_rate: 0.0003
+  brokerage_min: 0.24
+  stt_ctt_rate: 0.00025
+  transaction_rate: 0.0000297
+  gst_rate: 0.18
+  sebi_rate: 0.000000012
+  stamp_rate: 0.00003
+
+slippage:
+  slippage_pct: 0.001  # 0.1% slippage
+
+backtest:
+  symbol: "ADANIENT"
+  start_date: "2025-02-20 09:15:00"
+  end_date: "2025-04-17 15:29:00"
+  log_file_path: "logs/trade.log"
+
+stress_test:
+  shock_factor: 0.1
+  probability: 0.01
+  max_volume_pct: 0.1

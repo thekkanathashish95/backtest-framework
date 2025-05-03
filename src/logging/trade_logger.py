@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
+from typing import Optional
 
 class TradeLogger:
     def __init__(self, log_file: str, db_path: str):
@@ -30,25 +31,59 @@ class TradeLogger:
         details = {"Signal": signal, "RSI": rsi, "Close": close}
         self._log("SIGNAL", message, timestamp, details)
 
-    def log_trade(self, timestamp: pd.Timestamp, action: str, quantity: int, price: float, value: float, symbol: str = "ADANIENT", fees: float = 0.0, net_profit: float = None):
+    def log_trade(self, timestamp: pd.Timestamp, action: str, quantity: int, price: float, 
+                  value: float, symbol: str = "ADANIENT", fees: float = 0.0, 
+                  net_profit: Optional[float] = None, reason: Optional[str] = None,
+                  trade_id: Optional[str] = None, position_id: Optional[int] = None):
         message = f"{action} {quantity} shares at {price}, Value: {value}"
-        details = {"Action": action, "Quantity": quantity, "Price": price, "Value": value, "Symbol": symbol, "Fees": fees, "NetProfit": net_profit}
+        details = {
+            "Action": action, 
+            "Quantity": quantity, 
+            "Price": price, 
+            "Value": value, 
+            "Symbol": symbol, 
+            "Fees": fees, 
+            "NetProfit": net_profit,
+            "Reason": reason,
+            "TradeID": trade_id,
+            "PositionID": position_id
+        }
         self._log("TRADE", message, timestamp, details)
 
-        # Log to trades table
-        self.cursor.execute(
-            """
-            INSERT INTO trades (run_id, timestamp, symbol, action, quantity, price, value, fees, net_profit)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (self.run_id, timestamp.isoformat(), symbol, action, quantity, price, value, fees, net_profit)
-        )
-        self.conn.commit()
+        # Log to trades table with correct column order
+        try:
+            self.cursor.execute(
+                """
+                INSERT INTO trades (run_id, trade_id, position_id, timestamp, symbol, action, quantity, price, value, fees, net_profit, reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (self.run_id, trade_id, position_id, timestamp.isoformat(), symbol, action, quantity, price, value, fees, net_profit, reason)
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Failed to log trade: {e}")
+            raise
 
     def log_portfolio(self, timestamp: pd.Timestamp, cash: float, holdings: float, total: float, quantity: float):
         message = f"Cash: {cash:.2f}, Holdings: {holdings:.2f}, Total: {total:.2f}, Quantity: {quantity}"
         details = {"Cash": cash, "Holdings": holdings, "Total": total, "Quantity": quantity}
         self._log("PORTFOLIO", message, timestamp, details)
+
+        # Log to portfolio_logs
+        try:
+            self.cursor.execute(
+                """
+                INSERT INTO portfolio_logs (run_id, date, cash, holdings, total, quantity)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (self.run_id, timestamp.isoformat(), cash, holdings, total, int(quantity))
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Failed to log portfolio: {e}")
+            raise
 
     def _log(self, log_type: str, message: str, timestamp: pd.Timestamp, details: dict):
         # Ensure timestamp is timezone-aware
@@ -57,19 +92,24 @@ class TradeLogger:
         else:
             timestamp = timestamp.tz_convert('Asia/Kolkata')
         
-        # Log to file and Application Insights
+        # Log to file
         extra = {'run_id': self.run_id, 'log_type': log_type}
         self.logger.info(message, extra=extra)
 
         # Log to SQLite
-        self.cursor.execute(
-            """
-            INSERT INTO trade_logs (run_id, timestamp, log_type, message, details)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (self.run_id, timestamp.isoformat(), log_type, message, json.dumps(details))
-        )
-        self.conn.commit()
+        try:
+            self.cursor.execute(
+                """
+                INSERT INTO trade_logs (run_id, log_type, timestamp, message, details)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (self.run_id, log_type, timestamp.isoformat(), message, json.dumps(details))
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Failed to log to trade_logs: {e}")
+            raise
 
     def close(self):
         self.conn.close()

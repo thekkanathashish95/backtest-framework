@@ -1,36 +1,26 @@
 import pandas as pd
 import sqlite3
-import yaml
-from pathlib import Path
 from pandas import Timestamp
 
 class DataHandler:
-    def __init__(self, tradingsymbol: str, config_path: str, table_name: str, start_date: str, end_date: str):
+    def __init__(self, tradingsymbol: str, db_path: str, table_name: str, start_date: str, end_date: str):
         self.tradingsymbol = tradingsymbol
+        self.db_path = db_path
         self.table_name = table_name
         self.start_date = pd.to_datetime(start_date)
         self.end_date = pd.to_datetime(end_date)
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
-        self.db_path = config['database']['db_path']
         self.data = self.load_data()
 
     def load_data(self) -> pd.DataFrame:
-        """
-        Load OHLCV data from SQLite database, validate, and handle gaps.
-        Returns:
-            DataFrame with OHLCV data, timezone-aware index.
-        """
         try:
             conn = sqlite3.connect(self.db_path)
             try:
-                query = f"""
+                query = """
                     SELECT date, open, high, low, close, volume, tradingsymbol
-                    FROM {self.table_name}
+                    FROM {} 
                     WHERE tradingsymbol = ? AND date BETWEEN ? AND ?
                     ORDER BY date
-                """
-                # Convert timestamps to SQLite-compatible string format
+                """.format(self.table_name)
                 start_date_str = self.start_date.strftime('%Y-%m-%d %H:%M:%S')
                 end_date_str = self.end_date.strftime('%Y-%m-%d %H:%M:%S')
                 df = pd.read_sql_query(
@@ -68,16 +58,12 @@ class DataHandler:
                 df = df[
                     (df.index.time >= pd.Timestamp('09:15').time()) &
                     (df.index.time <= pd.Timestamp('15:30').time()) &
-                    (df.index.weekday < 5)  # Monday to Friday (0 to 4)
+                    (df.index.weekday < 5)
                 ]
 
-                # Generate expected index for trading hours only
-                trading_days = pd.date_range(
-                    start=df.index[0].date(),
-                    end=df.index[-1].date(),
-                    freq='B',  # Business days (Monday to Friday)
-                    tz='Asia/Kolkata'
-                )
+                # Generate expected index using unique trading days
+                unique_dates = df.index.normalize().unique().date
+                trading_days = pd.DatetimeIndex(unique_dates).tz_localize('Asia/Kolkata')
                 expected_index = pd.DatetimeIndex([])
                 for day in trading_days:
                     day_start = pd.Timestamp(day.date()) + pd.Timedelta(hours=9, minutes=15)
@@ -90,6 +76,8 @@ class DataHandler:
                 if len(missing) > 0:
                     print(f"Warning: {len(missing)} missing bars within trading hours detected. Filling with forward-fill.")
                     df = df.reindex(expected_index, method='ffill')
+                    # Set Volume to 0 for filled bars
+                    df.loc[missing, 'Volume'] = 0
                 return df
             except sqlite3.OperationalError as e:
                 if "no such table" in str(e).lower():
@@ -101,13 +89,6 @@ class DataHandler:
             raise ValueError(f"Failed to connect to database '{self.db_path}': {str(e)}") from e
 
     def get_historical_data(self, end_date: pd.Timestamp) -> pd.DataFrame:
-        """
-        Return historical data up to end_date (exclusive).
-        Args:
-            end_date: Timestamp (timezone-aware).
-        Returns:
-            DataFrame with OHLCV data.
-        """
         if end_date.tzinfo is None:
             end_date = end_date.tz_localize('Asia/Kolkata')
         else:

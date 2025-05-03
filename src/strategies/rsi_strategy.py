@@ -5,7 +5,7 @@ from src.logging.trade_logger import TradeLogger
 from typing import Optional
 
 class RSIStrategy(BaseStrategy):
-    def __init__(self, data_handler, rsi_period: int = 14, overbought: float = 60, oversold: float = 20, wait_period: int = 5, logger: TradeLogger = None):
+    def __init__(self, data_handler, rsi_period: int, overbought: float, oversold: float, wait_period: int, logger: TradeLogger = None):
         super().__init__(data_handler)
         self.rsi_period = rsi_period
         self.overbought = overbought
@@ -52,12 +52,17 @@ class RSIStrategy(BaseStrategy):
         current_quantity = portfolio.get_current_quantity(date)
 
         signal = 0
-        if rsi < self.oversold and current_quantity == 0:
-            signal = 1  # Buy
-        elif rsi > self.overbought and current_quantity == 0:
-            signal = -1  # Short
-        elif rsi < self.oversold and current_quantity < 0:
-            signal = 1  # Cover short
+        if current_quantity == 0:
+            if rsi < self.oversold:
+                signal = 1  # Buy
+            elif rsi > self.overbought:
+                signal = -1  # Short
+        elif current_quantity > 0:  # Long position
+            if rsi > self.overbought:
+                signal = -1  # Sell
+        elif current_quantity < 0:  # Short position
+            if rsi < self.oversold:
+                signal = 1  # Cover
 
         if self.logger and signal != 0:
             self.logger.log_signal(date, signal, rsi, price)

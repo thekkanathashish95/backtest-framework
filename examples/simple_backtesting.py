@@ -1,36 +1,32 @@
+import pandas as pd
+import yaml
 from src.core.data_handler import DataHandler
 from src.strategies.rsi_strategy import RSIStrategy
 from src.portfolio.portfolio import Portfolio
 from src.logging.trade_logger import TradeLogger
 from src.backtest.stress_test import StressTester
 from src.backtest.visualizer import Visualizer
-import pandas as pd
-import yaml
 
 def run_backtest(stress_test: bool = False):
-    """
-    Run backtest with optional stress testing.
-    Args:
-        stress_test: If True, apply price shocks and liquidity constraints.
-    """
-    # Load config
     with open('config/config.yaml', 'r') as f:
         config = yaml.safe_load(f)
+
     db_path = config['database']['db_path']
+    strategy_params = config['strategy']
+    portfolio_params = config['portfolio']
+    transaction_costs = config['transaction_costs']
+    slippage_params = config['slippage']
+    backtest_params = config['backtest']
+    stress_test_params = config['stress_test'] if stress_test else None
 
-    # Initialize logger
-    logger = TradeLogger(
-        log_file='logs/trade.log',
-        db_path=db_path,
-    )
+    logger = TradeLogger(log_file=backtest_params['log_file_path'], db_path=db_path)
 
-    # Initialize data handler
     dh = DataHandler(
-        tradingsymbol='ADANIENT',
-        config_path='config/config.yaml',
+        tradingsymbol=backtest_params['symbol'],
+        db_path=db_path,
         table_name='nifty_50_historic_20240419',
-        start_date='2025-02-20 09:15:00',
-        end_date='2025-04-17 15:29:00'
+        start_date=backtest_params['start_date'],
+        end_date=backtest_params['end_date']
     )
 
     print("Data summary:")
@@ -39,15 +35,36 @@ def run_backtest(stress_test: bool = False):
     # Apply stress tests if enabled
     if stress_test:
         stress_tester = StressTester(dh.data, seed=42)
-        dh.data = stress_tester.apply_price_shock(shock_factor=0.1, probability=0.01)
-        dh.data = stress_tester.apply_liquidity_constraint(max_volume_pct=0.1)
+        dh.data = stress_tester.apply_price_shock(
+            shock_factor=stress_test_params['shock_factor'],
+            probability=stress_test_params['probability']
+        )
+        dh.data = stress_tester.apply_liquidity_constraint(
+            max_volume_pct=stress_test_params['max_volume_pct']
+        )
         print("Applied stress tests: ±10% price shocks (1% probability), 10% volume limit")
 
-    # Initialize RSI Strategy
-    rsi_strategy = RSIStrategy(data_handler=dh, rsi_period=14, overbought=60, oversold=30, wait_period=5, logger=logger)
+    rsi_strategy = RSIStrategy(
+        data_handler=dh,
+        rsi_period=strategy_params['rsi_period'],
+        overbought=strategy_params['overbought'],
+        oversold=strategy_params['oversold'],
+        wait_period=strategy_params['wait_period'],
+        logger=logger
+    )
 
-    # Initialize Portfolio
-    portfolio = Portfolio(initial_cash=100000, data_handler=dh, strategy=rsi_strategy, logger=logger)
+    portfolio = Portfolio(
+        initial_cash=portfolio_params['initial_cash'],
+        data_handler=dh,
+        strategy=rsi_strategy,
+        logger=logger,
+        transaction_costs=transaction_costs,
+        slippage_pct=slippage_params['slippage_pct'],
+        buy_cash_pct=portfolio_params['buy_cash_pct'],
+        short_cash_pct=portfolio_params['short_cash_pct'],
+        stop_loss_pct=portfolio_params['stop_loss_pct'],
+        take_profit_pct=portfolio_params['take_profit_pct']
+    )
 
     print("\nProcessing bars...")
     last_printed_date = None
