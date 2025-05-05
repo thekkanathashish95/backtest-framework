@@ -3,10 +3,10 @@ database:
 
 
 strategy:
-  rsi_period: 14
-  overbought: 60
+  rsi_period: 12
+  overbought: 80
   oversold: 20
-  wait_period: 5
+  wait_period: 15
 
 portfolio:
   initial_cash: 100000
@@ -29,6 +29,7 @@ slippage:
 
 backtest:
   symbol: "ADANIENT"
+  table_name: "nifty_50_historic_20240419"
   start_date: "2025-02-20 09:15:00"
   end_date: "2025-04-17 15:29:00"
   log_file_path: "logs/trade.log"
@@ -37,3 +38,12 @@ stress_test:
   shock_factor: 0.1
   probability: 0.01
   max_volume_pct: 0.1
+
+optimization:
+  metric: "Sharpe Ratio"
+  n_jobs: -1
+  param_grid:
+    rsi_period: [10, 12]
+    overbought: [60, 65, 70, 75, 80]
+    oversold: [20, 25, 30]
+    wait_period: [5, 10, 15]

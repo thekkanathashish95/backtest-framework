@@ -6,25 +6,40 @@ from src.portfolio.portfolio import Portfolio
 from src.logging.trade_logger import TradeLogger
 from src.backtest.stress_test import StressTester
 from src.backtest.visualizer import Visualizer
+from src.backtest.optimizer import ParameterOptimizer
+import argparse
 
-def run_backtest(stress_test: bool = False):
+def run_backtest_with_params(stress_test: bool = False, strategy_params: dict = None):
+    """
+    Run a backtest with specified parameters.
+    
+    Args:
+        stress_test: Whether to apply stress testing.
+        strategy_params: Dictionary of strategy parameters.
+    
+    Returns:
+        Dictionary containing portfolio summary.
+    """
     with open('config/config.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
     db_path = config['database']['db_path']
-    strategy_params = config['strategy']
+    default_strategy_params = config['strategy']
     portfolio_params = config['portfolio']
     transaction_costs = config['transaction_costs']
     slippage_params = config['slippage']
     backtest_params = config['backtest']
     stress_test_params = config['stress_test'] if stress_test else None
+    
+    # Use provided strategy_params or fallback to config
+    strategy_params = strategy_params or default_strategy_params
 
     logger = TradeLogger(log_file=backtest_params['log_file_path'], db_path=db_path)
 
     dh = DataHandler(
         tradingsymbol=backtest_params['symbol'],
         db_path=db_path,
-        table_name='nifty_50_historic_20240419',
+        table_name=backtest_params['table_name'],
         start_date=backtest_params['start_date'],
         end_date=backtest_params['end_date']
     )
@@ -100,6 +115,29 @@ def run_backtest(stress_test: bool = False):
 
     # Close logger
     logger.close()
+    
+    return summary
+
+def main():
+    parser = argparse.ArgumentParser(description="Run backtest or optimize parameters")
+    parser.add_argument('--optimize', action='store_true', help="Run parameter optimization")
+    parser.add_argument('--stress-test', action='store_true', help="Apply stress testing")
+    args = parser.parse_args()
+    
+    with open('config/config.yaml', 'r') as f:
+        config = yaml.safe_load(f)
+    
+    if args.optimize:
+        optimizer = ParameterOptimizer(
+            backtest_func=run_backtest_with_params,
+            strategy_class=RSIStrategy,
+            param_grid=config['optimization']['param_grid'],
+            metric=config['optimization']['metric'],
+            output_dir='reports'
+        )
+        results = optimizer.optimize()
+    else:
+        run_backtest_with_params(stress_test=args.stress_test)
 
 if __name__ == "__main__":
-    run_backtest(stress_test=False)
+    main()

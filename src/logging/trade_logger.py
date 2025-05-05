@@ -23,7 +23,7 @@ class TradeLogger:
         self.logger.addHandler(file_handler)
 
         # SQLite connection
-        self.conn = sqlite3.connect(self.db_path)
+        self.conn = sqlite3.connect(self.db_path, timeout=10)
         self.cursor = self.conn.cursor()
 
     def log_signal(self, timestamp: pd.Timestamp, signal: int, rsi: float, close: float):
@@ -62,7 +62,7 @@ class TradeLogger:
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
-            self.logger.error(f"Failed to log trade: {e}")
+            self.logger.error(f"Failed to log trade: {e}", extra={'run_id': self.run_id, 'log_type': 'ERROR'})
             raise
 
     def log_portfolio(self, timestamp: pd.Timestamp, cash: float, holdings: float, total: float, quantity: float):
@@ -82,7 +82,7 @@ class TradeLogger:
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
-            self.logger.error(f"Failed to log portfolio: {e}")
+            self.logger.error(f"Failed to log portfolio: {e}", extra={'run_id': self.run_id, 'log_type': 'ERROR'})
             raise
 
     def _log(self, log_type: str, message: str, timestamp: pd.Timestamp, details: dict):
@@ -108,8 +108,9 @@ class TradeLogger:
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
-            self.logger.error(f"Failed to log to trade_logs: {e}")
+            self.logger.error(f"Failed to log to trade_logs: {e}", extra={'run_id': self.run_id, 'log_type': 'ERROR'})
             raise
 
     def close(self):
-        self.conn.close()
+        if self.conn:
+            self.conn.close()
