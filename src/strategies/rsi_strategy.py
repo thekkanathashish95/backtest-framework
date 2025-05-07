@@ -30,12 +30,6 @@ class RSIStrategy(BaseStrategy):
         if date not in self.data.index:
             return None
 
-        if portfolio.last_trade_date is not None:
-            time_since_last_trade = (date - portfolio.last_trade_date).total_seconds() / 60
-            if time_since_last_trade < self.wait_period:
-                self.logger._log("DEBUG", f"Skipped signal: within {self.wait_period}-minute wait period (time since last trade: {time_since_last_trade:.2f} minutes)", date, {})
-                return None
-
         current_data = self.data.loc[date]
         price = current_data['Close']
 
@@ -47,6 +41,8 @@ class RSIStrategy(BaseStrategy):
             rsi = self._rsi_cache.loc[date]
 
         if pd.isna(rsi):
+            if self.logger:
+                self.log_signal_data(date, price, rsi, None)
             return None
 
         current_quantity = portfolio.get_current_quantity(date)
@@ -64,10 +60,18 @@ class RSIStrategy(BaseStrategy):
             if rsi < self.oversold:
                 signal = 1  # Cover
 
-        if self.logger and signal != 0:
-            self.logger.log_signal(date, signal, rsi, price)
+        # Log signal data
+        if self.logger:
+            self.log_signal_data(date, price, rsi, signal)
 
-        return signal
+            return signal
+        
+    
+    def log_signal_data(self, timestamp: pd.Timestamp, price: float, rsi: float, signal: Optional[int]):
+        """Delegate signal data logging to TradeLogger."""
+        self.logger.log_signal_data(timestamp, price, rsi, signal)
+        
+    
 
     def generate_signals(self) -> pd.DataFrame:
         raise NotImplementedError("Batch signal generation is deprecated. Use generate_signal for sequential processing.")

@@ -1,0 +1,62 @@
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+}
+
+h1 {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+.dropdown-container {
+  margin-bottom: 20px;
+}
+
+.dropdown-container label {
+  margin-right: 10px;
+  font-weight: bold;
+}
+
+.dropdown-container select {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.chart-container {
+  margin-bottom: 20px;
+}
+
+.chart-container h2 {
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.chart {
+  width: 100%;
+  border: 1px solid #e0e0e0;
+}
+
+.error-message {
+  background-color: #ffe6e6;
+  border: 1px solid #ff3333;
+  padding: 15px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+}
+
+.error-message h2 {
+  font-size: 18px;
+  color: #ff3333;
+  margin-bottom: 10px;
+}
+
+.error-message p {
+  font-size: 16px;
+  color: #333;
+}

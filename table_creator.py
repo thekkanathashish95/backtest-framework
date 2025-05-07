@@ -55,12 +55,32 @@ class TableCreator:
             )
         ''')
 
+        # Create runs table
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS runs (
+                run_id TEXT PRIMARY KEY,
+                initiated_time TEXT NOT NULL
+            )
+        ''')
+
+        self.cursor.execute('''
+        CREATE TABLE IF NOT EXISTS signal_logs (
+            run_id TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            price REAL NOT NULL,
+            rsi REAL,
+            signal INTEGER,
+            PRIMARY KEY (run_id, timestamp)
+        )
+    ''')
+
         self.conn.commit()
 
     def drop_tables(self):
         self.cursor.execute('DROP TABLE IF EXISTS trades')
         self.cursor.execute('DROP TABLE IF EXISTS trade_logs')
         self.cursor.execute('DROP TABLE IF EXISTS portfolio_logs')
+        self.cursor.execute('DROP TABLE IF EXISTS runs')
         self.conn.commit()
 
     def query_tables(self):

@@ -10,6 +10,7 @@ from typing import Optional
 class TradeLogger:
     def __init__(self, log_file: str, db_path: str):
         self.run_id = str(uuid.uuid4())
+        self.run_initiated_time = datetime.now().astimezone()  # Capture current time
         self.db_path = db_path
         self.logger = logging.getLogger(f"TradeLogger_{self.run_id}")
         self.logger.setLevel(logging.INFO)
@@ -26,10 +27,55 @@ class TradeLogger:
         self.conn = sqlite3.connect(self.db_path, timeout=10)
         self.cursor = self.conn.cursor()
 
+        # Log run initiation to runs table
+        self._log_run_initiation()
+
+    def _log_run_initiation(self):
+        """Log run metadata to the runs table."""
+        try:
+            self.cursor.execute(
+                """
+                INSERT INTO runs (run_id, initiated_time)
+                VALUES (?, ?)
+                """,
+                (self.run_id, self.run_initiated_time.isoformat())
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Failed to log run initiation: {e}", extra={'run_id': self.run_id, 'log_type': 'ERROR'})
+            raise
+    
     def log_signal(self, timestamp: pd.Timestamp, signal: int, rsi: float, close: float):
         message = f"Signal: {signal}, RSI: {rsi:.2f}, Close: {close}"
         details = {"Signal": signal, "RSI": rsi, "Close": close}
         self._log("SIGNAL", message, timestamp, details)
+
+    
+    def log_signal_data(self, timestamp: pd.Timestamp, price: float, rsi: float, signal: Optional[int]):
+        """Log RSI, price, and signal data to signal_logs table."""
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.tz_localize('Asia/Kolkata')
+        else:
+            timestamp = timestamp.tz_convert('Asia/Kolkata')
+        
+        message = f"Signal Data: Price: {price:.2f}, RSI: {rsi:.2f}, Signal: {signal}"
+        details = {"Price": price, "RSI": rsi, "Signal": signal}
+        self._log("SIGNAL_DATA", message, timestamp, details)
+
+        try:
+            self.cursor.execute(
+                """
+                INSERT INTO signal_logs (run_id, timestamp, price, rsi, signal)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (self.run_id, timestamp.isoformat(), price, rsi, signal)
+            )
+            self.conn.commit()
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Failed to log signal data: {e}", extra={'run_id': self.run_id, 'log_type': 'ERROR'})
+            raise
 
     def log_trade(self, timestamp: pd.Timestamp, action: str, quantity: int, price: float, 
                   value: float, symbol: str = "ADANIENT", fees: float = 0.0, 

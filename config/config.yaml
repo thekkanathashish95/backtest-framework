@@ -5,15 +5,15 @@ database:
 strategy:
   rsi_period: 12
   overbought: 80
-  oversold: 20
-  wait_period: 15
+  oversold: 30
+  wait_period: 5
 
 portfolio:
   initial_cash: 100000
   buy_cash_pct: 0.5
   short_cash_pct: 0.3
-  stop_loss_pct: 0.03
-  take_profit_pct: 0.05
+  stop_loss_pct: 0.01
+  take_profit_pct: 0.03
 
 transaction_costs:
   brokerage_rate: 0.0003
@@ -29,6 +29,7 @@ slippage:
 
 backtest:
   symbol: "ADANIENT"
+  # symbol: "RELIANCE"
   table_name: "nifty_50_historic_20240419"
   start_date: "2025-02-20 09:15:00"
   end_date: "2025-04-17 15:29:00"
@@ -43,7 +44,16 @@ optimization:
   metric: "Sharpe Ratio"
   n_jobs: -1
   param_grid:
-    rsi_period: [10, 12]
-    overbought: [60, 65, 70, 75, 80]
-    oversold: [20, 25, 30]
-    wait_period: [5, 10, 15]
+    rsi_period: [12, 14, 16]
+    overbought: [80, 90]
+    oversold: [25, 30]
+    wait_period: [0, 5]
+    stop_loss_pct: [0.01, 0.02, 0.03]
+    take_profit_pct: [0.03, 0.05, 0.07]
+
+# optimization:
+#   metric: "Sharpe Ratio"
+#   n_jobs: -1
+#   param_grid:
+#     rsi_period: [12, 14]
+#     wait_period: [15]
