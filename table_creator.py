@@ -64,15 +64,34 @@ class TableCreator:
         ''')
 
         self.cursor.execute('''
-        CREATE TABLE IF NOT EXISTS signal_logs (
-            run_id TEXT NOT NULL,
-            timestamp TEXT NOT NULL,
-            price REAL NOT NULL,
-            rsi REAL,
-            signal INTEGER,
-            PRIMARY KEY (run_id, timestamp)
-        )
-    ''')
+            CREATE TABLE IF NOT EXISTS signal_logs (
+                run_id TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                price REAL NOT NULL,
+                rsi REAL,
+                signal INTEGER,
+                PRIMARY KEY (run_id, timestamp)
+            )
+        ''')
+
+        # Create metrics table
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS metrics (
+                run_id TEXT PRIMARY KEY,
+                annualized_return REAL,
+                max_drawdown REAL,
+                max_drawdown_start TEXT,
+                max_drawdown_end TEXT,
+                win_rate REAL,
+                sharpe_ratio REAL,
+                sortino_ratio REAL,
+                calmar_ratio REAL,
+                profit_factor REAL,
+                total_trades INTEGER,
+                avg_trade_duration REAL,
+                FOREIGN KEY (run_id) REFERENCES runs(run_id)
+            )
+        ''')
 
         self.conn.commit()
 
@@ -81,6 +100,8 @@ class TableCreator:
         self.cursor.execute('DROP TABLE IF EXISTS trade_logs')
         self.cursor.execute('DROP TABLE IF EXISTS portfolio_logs')
         self.cursor.execute('DROP TABLE IF EXISTS runs')
+        self.cursor.execute('DROP TABLE IF EXISTS signal_logs')
+        self.cursor.execute('DROP TABLE IF EXISTS metrics')
         self.conn.commit()
 
     def query_tables(self):
@@ -117,7 +138,7 @@ class TableCreator:
 # Usage
 def main():
     table_creator = TableCreator("/Users/ashishmathew/Documents/Development/AlgoTrader/database/algo_data.db")
-    table_creator.drop_tables()
+    # table_creator.drop_tables()
     table_creator.create_tables()
     table_creator.query_tables()
 

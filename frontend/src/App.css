@@ -27,6 +27,15 @@ h1 {
   font-size: 16px;
 }
 
+.content-container {
+  display: flex;
+  gap: 20px;
+}
+
+.charts-container {
+  width: 75%;
+}
+
 .chart-container {
   margin-bottom: 20px;
 }
@@ -59,4 +68,42 @@ h1 {
 .error-message p {
   font-size: 16px;
   color: #333;
+}
+
+.metrics-container {
+  width: 25%;
+}
+
+.metrics-container h2 {
+  font-size: 20px;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #e0e0e0;
+  background-color: #ffffff;
+}
+
+.metrics-table th,
+.metrics-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.metrics-table th {
+  background-color: #f5f5f5;
+  font-weight: bold;
+  color: #333;
+}
+
+.metrics-table td {
+  color: #333;
+}
+
+.metrics-table tr:last-child td {
+  border-bottom: none;
 }

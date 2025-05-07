@@ -29,6 +29,8 @@ const App = () => {
   const [selectedRunId, setSelectedRunId] = useState('');
   const [signals, setSignals] = useState([]);
   const [trades, setTrades] = useState([]);
+  const [metrics, setMetrics] = useState(null);
+  const [finalPortfolioValue, setFinalPortfolioValue] = useState(null);
   const [error, setError] = useState(null);
   const priceChartRef = useRef(null);
   const tradeChartRef = useRef(null);
@@ -52,7 +54,7 @@ const App = () => {
       .catch((err) => console.error('Error fetching runs:', err));
   }, []);
 
-  // Fetch signals when run_id changes
+  // Fetch signals, trades, metrics, and final portfolio value when run_id changes
   useEffect(() => {
     if (selectedRunId) {
       // Fetch signals
@@ -79,6 +81,39 @@ const App = () => {
           console.error('Error fetching trades:', err);
           setError('Failed to fetch trades. Please try another run.');
         });
+
+      // Fetch metrics
+      fetch(`http://localhost:8000/metrics/${selectedRunId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          console.log('Fetched metrics:', data);
+          setMetrics(data);
+          setError(null);
+        })
+        .catch((err) => {
+          console.error('Error fetching metrics:', err);
+          setError('Failed to fetch metrics. Please try another run.');
+        });
+
+      // Fetch final portfolio value
+      fetch(`http://localhost:8000/portfolio_final/${selectedRunId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          console.log('Fetched final portfolio value:', data);
+          setFinalPortfolioValue(data.total);
+          setError(null);
+        })
+        .catch((err) => {
+          console.error('Error fetching final portfolio value:', err);
+          setError('Failed to fetch final portfolio value. Please try another run.');
+        });
+    } else {
+      // Clear data when no run is selected
+      setSignals([]);
+      setTrades([]);
+      setMetrics(null);
+      setFinalPortfolioValue(null);
+      setError(null);
     }
   }, [selectedRunId]);
 
@@ -89,7 +124,7 @@ const App = () => {
         // Price Chart
         priceChartInstance.current = createChart(priceChartRef.current, {
           width: priceChartRef.current.clientWidth,
-          height: 233, // Adjusted to equal height
+          height: 233,
           layout: { background: { color: '#ffffff' }, textColor: '#333' },
           grid: { vertLines: { color: '#e0e0e0' }, horzLines: { color: '#e0e0e0' } },
           crosshair: { mode: CrosshairMode.Normal },
@@ -99,7 +134,7 @@ const App = () => {
         // Trade Chart
         tradeChartInstance.current = createChart(tradeChartRef.current, {
           width: tradeChartRef.current.clientWidth,
-          height: 233, // Adjusted to equal height
+          height: 233,
           layout: { background: { color: '#ffffff' }, textColor: '#333' },
           grid: { vertLines: { color: '#e0e0e0' }, horzLines: { color: '#e0e0e0' } },
           crosshair: { mode: CrosshairMode.Normal },
@@ -109,7 +144,7 @@ const App = () => {
         // RSI Chart
         rsiChartInstance.current = createChart(rsiChartRef.current, {
           width: rsiChartRef.current.clientWidth,
-          height: 233, // Adjusted to equal height
+          height: 233,
           layout: { background: { color: '#ffffff' }, textColor: '#333' },
           grid: { vertLines: { color: '#e0e0e0' }, horzLines: { color: '#e0e0e0' } },
           crosshair: { mode: CrosshairMode.Normal },
@@ -119,7 +154,7 @@ const App = () => {
         // Synchronize time scales
         const syncTimeScales = (sourceChart, targetCharts) => {
           sourceChart.timeScale().subscribeVisibleTimeRangeChange(() => {
-            if (isUpdatingTimeScale.current) return; // Prevent infinite loop
+            if (isUpdatingTimeScale.current) return;
             isUpdatingTimeScale.current = true;
             const timeRange = sourceChart.timeScale().getVisibleLogicalRange();
             if (timeRange) {
@@ -258,10 +293,10 @@ const App = () => {
 
         // Trade Line Series (baseline at y=0)
         tradeSeriesRef.current = tradeChartInstance.current.addLineSeries({
-          color: '#2962FF', // Same color as Price Chart
+          color: '#2962FF',
           lineWidth: 2,
         });
-        tradeSeriesRef.current.setData(priceData); // Use the same price data
+        tradeSeriesRef.current.setData(priceData);
 
         // Trade Markers
         tradeSeriesRef.current.setMarkers(tradeMarkers);
@@ -278,13 +313,13 @@ const App = () => {
           price: 70, 
           color: 'red', 
           lineWidth: 1, 
-          lineStyle: LineStyle.Dashed 
+          lineStyle: LineStyle.Dashed,
         });
         rsiSeriesRef.current.createPriceLine({ 
           price: 30, 
           color: 'green', 
           lineWidth: 1, 
-          lineStyle: LineStyle.Dashed 
+          lineStyle: LineStyle.Dashed,
         });
 
         // Fit content
@@ -297,6 +332,43 @@ const App = () => {
       }
     }
   }, [signals, trades]);
+
+  // Format metric value for display
+  const formatMetric = (value, key) => {
+    if (value == null) return 'N/A';
+    if (['max_drawdown_start', 'max_drawdown_end'].includes(key)) {
+      return new Date(value).toLocaleString();
+    }
+    if (['annualized_return', 'max_drawdown', 'win_rate'].includes(key)) {
+      return `${Number(value).toFixed(2)}%`;
+    }
+    if (['sharpe_ratio', 'sortino_ratio', 'calmar_ratio', 'profit_factor'].includes(key)) {
+      return Number(value).toFixed(2);
+    }
+    if (key === 'avg_trade_duration') {
+      return `${Number(value).toFixed(2)} min`;
+    }
+    if (key === 'final_portfolio_value') {
+      return `₹${Number(value).toFixed(2)}`;
+    }
+    return Math.round(value);
+  };
+
+  // Define metrics to display
+  const metricDisplay = [
+    { key: 'final_portfolio_value', label: 'Final Portfolio Value' },
+    { key: 'annualized_return', label: 'Annualized Return' },
+    { key: 'max_drawdown', label: 'Max Drawdown' },
+    { key: 'max_drawdown_start', label: 'Max Drawdown Start' },
+    { key: 'max_drawdown_end', label: 'Max Drawdown End' },
+    { key: 'win_rate', label: 'Win Rate' },
+    { key: 'sharpe_ratio', label: 'Sharpe Ratio' },
+    { key: 'sortino_ratio', label: 'Sortino Ratio' },
+    { key: 'calmar_ratio', label: 'Calmar Ratio' },
+    { key: 'profit_factor', label: 'Profit Factor' },
+    { key: 'total_trades', label: 'Total Trades' },
+    { key: 'avg_trade_duration', label: 'Avg Trade Duration' },
+  ];
 
   return (
     <div className="app-container">
@@ -322,6 +394,8 @@ const App = () => {
           <p>{error}</p>
         </div>
       )}
+      <div className="content-container">
+        <div className="charts-container">
       <ErrorBoundary>
         <div className="chart-container">
           <h2>Price Chart</h2>
@@ -336,6 +410,33 @@ const App = () => {
           <div ref={rsiChartRef} className="chart" />
         </div>
       </ErrorBoundary>
+        </div>
+        {(metrics || finalPortfolioValue !== null) && (
+          <div className="metrics-container">
+            <h2>Performance Metrics</h2>
+            <table className="metrics-table">
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metricDisplay.map(({ key, label }) => (
+                  <tr key={key}>
+                    <td>{label}</td>
+                    <td>
+                      {key === 'final_portfolio_value'
+                        ? formatMetric(finalPortfolioValue, key)
+                        : metrics && formatMetric(metrics[key], key)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

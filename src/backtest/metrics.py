@@ -83,11 +83,41 @@ class Metrics:
         """
         if len(self.returns) < 2:
             return 0.0
-        mean_return = self.returns.mean() * 252 * 390  # 390 minutes per trading day
+        mean_return = self.returns.mean() * 252 * 390
         std_return = self.returns.std() * np.sqrt(252 * 390)
         if std_return == 0 or np.isnan(std_return):
             return 0.0
         return (mean_return - risk_free_rate) / std_return
+
+    def sortino_ratio(self, risk_free_rate: float = 0.0) -> float:
+        """
+        Calculate Sortino ratio (downside risk only).
+        Args:
+            risk_free_rate: Annual risk-free rate (default: 0.0).
+        Returns:
+            Sortino ratio.
+        """
+        if len(self.returns) < 2:
+            return 0.0
+        mean_return = self.returns.mean() * 252 * 390
+        downside_returns = self.returns[self.returns < 0]
+        downside_std = downside_returns.std() * np.sqrt(252 * 390) if not downside_returns.empty else 0.0
+        if downside_std == 0 or np.isnan(downside_std):
+            return 0.0
+        return (mean_return - risk_free_rate) / downside_std
+
+    def calmar_ratio(self) -> float:
+        """
+        Calculate Calmar ratio (annualized return / max drawdown).
+        Returns:
+            Calmar ratio.
+        """
+        annualized_ret = self.annualized_return() / 100
+        max_dd, _, _ = self.max_drawdown()
+        max_dd = abs(max_dd / 100)  # Convert to positive fraction
+        if max_dd == 0 or np.isnan(max_dd):
+            return 0.0
+        return annualized_ret / max_dd
 
     def profit_factor(self) -> float:
         """
@@ -105,7 +135,30 @@ class Metrics:
         gross_losses = -exit_trades[exit_trades['NetProfit'] < 0]['NetProfit'].sum()
         return gross_profits / gross_losses if gross_losses > 0 else float('inf')
 
-    def get_metrics(self) -> Dict[str, float]:
+    def avg_trade_duration(self) -> float:
+        """
+        Calculate average trade duration in minutes.
+        Returns:
+            Average trade duration in minutes.
+        """
+        if self.trades.empty:
+            return 0.0
+        # Pair entry and exit trades by position_id
+        entry_actions = ['Buy', 'Short']
+        exit_actions = ['Sell', 'Cover']
+        durations = []
+        for position_id in self.trades['position_id'].unique():
+            position_trades = self.trades[self.trades['position_id'] == position_id].sort_values('Date')
+            entry_trades = position_trades[position_trades['Action'].isin(entry_actions)]
+            exit_trades = position_trades[position_trades['Action'].isin(exit_actions)]
+            if not entry_trades.empty and not exit_trades.empty:
+                entry_time = entry_trades['Date'].iloc[0]
+                exit_time = exit_trades['Date'].iloc[-1]
+                duration = (exit_time - entry_time).total_seconds() / 60.0
+                durations.append(duration)
+        return np.mean(durations) if durations else 0.0
+
+    def get_metrics(self) -> Dict[str, any]:
         """
         Compute all metrics.
         Returns:
@@ -119,6 +172,9 @@ class Metrics:
             'Max Drawdown End': dd_end,
             'Win Rate (%)': self.win_rate(),
             'Sharpe Ratio': self.sharpe_ratio(),
+            'Sortino Ratio': self.sortino_ratio(),
+            'Calmar Ratio': self.calmar_ratio(),
             'Profit Factor': self.profit_factor(),
             'Total Trades': len(self.trades[self.trades['Action'].isin(['Sell', 'Cover'])]),
+            'Avg Trade Duration (min)': self.avg_trade_duration(),
         }

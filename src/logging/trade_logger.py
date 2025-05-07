@@ -5,12 +5,12 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 import pandas as pd
-from typing import Optional
+from typing import Optional, Dict
 
 class TradeLogger:
     def __init__(self, log_file: str, db_path: str):
         self.run_id = str(uuid.uuid4())
-        self.run_initiated_time = datetime.now().astimezone()  # Capture current time
+        self.run_initiated_time = datetime.now().astimezone()
         self.db_path = db_path
         self.logger = logging.getLogger(f"TradeLogger_{self.run_id}")
         self.logger.setLevel(logging.INFO)
@@ -129,6 +129,40 @@ class TradeLogger:
         except sqlite3.Error as e:
             self.conn.rollback()
             self.logger.error(f"Failed to log portfolio: {e}", extra={'run_id': self.run_id, 'log_type': 'ERROR'})
+            raise
+
+    def log_metrics(self, metrics: Dict[str, any]):
+        """Log performance metrics to the metrics table."""
+        try:
+            self.cursor.execute(
+                """
+                INSERT INTO metrics (
+                    run_id, annualized_return, max_drawdown, max_drawdown_start, max_drawdown_end,
+                    win_rate, sharpe_ratio, sortino_ratio, calmar_ratio, profit_factor,
+                    total_trades, avg_trade_duration
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    self.run_id,
+                    metrics.get('Annualized Return (%)'),
+                    metrics.get('Max Drawdown (%)'),
+                    metrics.get('Max Drawdown Start').isoformat() if metrics.get('Max Drawdown Start') else None,
+                    metrics.get('Max Drawdown End').isoformat() if metrics.get('Max Drawdown End') else None,
+                    metrics.get('Win Rate (%)'),
+                    metrics.get('Sharpe Ratio'),
+                    metrics.get('Sortino Ratio'),
+                    metrics.get('Calmar Ratio'),
+                    metrics.get('Profit Factor'),
+                    metrics.get('Total Trades'),
+                    metrics.get('Avg Trade Duration (min)')
+                )
+            )
+            self.conn.commit()
+            self.logger.info(f"Logged metrics for run_id {self.run_id}", extra={'run_id': self.run_id, 'log_type': 'METRICS'})
+        except sqlite3.Error as e:
+            self.conn.rollback()
+            self.logger.error(f"Failed to log metrics: {e}", extra={'run_id': self.run_id, 'log_type': 'ERROR'})
             raise
 
     def _log(self, log_type: str, message: str, timestamp: pd.Timestamp, details: dict):

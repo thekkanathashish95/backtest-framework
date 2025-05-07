@@ -26,11 +26,11 @@ class Portfolio:
             columns=['Quantity', 'Price'],
             dtype=float
         ).fillna(0)
-        self._trade_list = []  # List to collect trades during backtest
+        self._trade_list = []
         self.trades = pd.DataFrame(columns=[
             'trade_id', 'position_id', 'Date', 'Symbol', 'Action', 'Quantity', 'Price', 
             'Value', 'Fees', 'NetProfit', 'Reason'
-        ])  # Empty DataFrame for compatibility
+        ])
         self.portfolio_value = pd.DataFrame(
             index=self.data_handler.data.index,
             columns=['Cash', 'Holdings', 'Total'],
@@ -42,8 +42,8 @@ class Portfolio:
         self._current_quantity = 0
         self.last_trade_date: Optional[pd.Timestamp] = None
         self.skipped_trades = 0
-        self.position_queue = []  # FIFO queue: [{'quantity': int, 'entry_price': float, 'fees': float}, ...]
-        self.current_position_id = 0  # For position_id
+        self.position_queue = []
+        self.current_position_id = 0
 
     def _calculate_fees(self, trade_value: float, action: str) -> float:
         brokerage = min(self.transaction_costs['brokerage_rate'] * trade_value, self.transaction_costs['brokerage_min'])
@@ -77,7 +77,7 @@ class Portfolio:
             
             if action == 'Sell':
                 profit = (exit_price - entry['entry_price']) * qty_to_use
-            else:  # Cover
+            else:
                 profit = (entry['entry_price'] - exit_price) * qty_to_use
             
             total_profit += profit
@@ -96,9 +96,6 @@ class Portfolio:
         return total_profit - (total_entry_fees + exit_fees), exit_fees
 
     def _validate_position(self, date: pd.Timestamp):
-        """
-        Validate that self._current_quantity matches the sum of position_queue quantities.
-        """
         calc_quantity = sum(entry['quantity'] for entry in self.position_queue)
         if calc_quantity != self._current_quantity:
             self.logger._log("ERROR", f"Position mismatch: position_queue sum {calc_quantity} vs current_quantity {self._current_quantity}", date, {})
@@ -106,10 +103,6 @@ class Portfolio:
 
     def _execute_trade(self, date: pd.Timestamp, price: float, symbol: str, quantity: int, 
                       action: str, reason: str, max_tradeable_volume: float, force_close: bool = False) -> bool:
-        """
-        Execute a trade with the given parameters.
-        """
-        # Validate inputs
         if quantity == 0:
             self.logger._log("DEBUG", f"Skipped {action}: zero quantity", date, {})
             return False
@@ -338,6 +331,8 @@ class Portfolio:
         metrics = Metrics(self.portfolio_value, self.trades, self.initial_cash)
         metrics_dict = metrics.get_metrics()
         metrics_dict['debt'] = self.debt
+        # Log metrics to database
+        self.logger.log_metrics(metrics_dict)
         print("\nPerformance Metrics:")
         for key, value in metrics_dict.items():
             if isinstance(value, pd.Timestamp):
