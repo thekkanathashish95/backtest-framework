@@ -17,7 +17,6 @@ A Python-based backtesting framework for algorithmic trading, supporting 1-minut
    - The framework uses a SQLite database () with 1-minute OHLCV data.
    - **Schema**: Table  with columns: Fri Apr 25 11:13:25 IST 2025 (TIMESTAMP), , , , , , .
    - Obtain data from a provider (e.g., Yahoo Finance, Alpha Vantage) or use a sample database (not included).
-   - Update  with the correct .
 
 5. **Run the example**:
    
@@ -28,6 +27,21 @@ A Python-based backtesting framework for algorithmic trading, supporting 1-minut
 - : RSI strategy implementation.
 - : Example script.
 - : Configuration file.
+
+## Configuration
+
+The application uses an SQLite database to store and retrieve data. The path to this database can be configured using an environment variable.
+
+-   **`ALGO_DB_PATH`**:
+    -   **Purpose**: Specifies the absolute or relative path to the SQLite database file (e.g., `algo_data.db`).
+    -   **Default**: If this environment variable is not set, the application will default to using `database/algo_data.db` relative to the project root.
+    -   **Example**:
+        ```bash
+        export ALGO_DB_PATH="/custom/path/to/your/algo_data.db"
+        # or for a relative path from where the app is run
+        export ALGO_DB_PATH="my_data/algo_data.db"
+        ```
+    -   **Note**: Ensure the directory for the database file exists and the application has the necessary permissions to read/write to it. If using the default path, you might need to create a `database` directory in the project root.
 
 ## Notes
 

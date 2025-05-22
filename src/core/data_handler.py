@@ -1,6 +1,9 @@
 import pandas as pd
 import sqlite3
 from pandas import Timestamp
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DataHandler:
     def __init__(self, tradingsymbol: str, db_path: str, table_name: str, start_date: str, end_date: str):
@@ -74,9 +77,15 @@ class DataHandler:
                 # Reindex to fill missing bars within trading hours
                 missing = expected_index.difference(df.index)
                 if len(missing) > 0:
-                    print(f"Warning: {len(missing)} missing bars within trading hours detected. Filling with forward-fill.")
+                    logger.warning(
+                        f"{len(missing)} missing bars filled via ffill (prices, O, H, L, C carried forward). "
+                        f"Volume for these filled bars is explicitly set to 0."
+                    )
                     df = df.reindex(expected_index, method='ffill')
-                    # Set Volume to 0 for filled bars
+                    # For forward-filled bars, Volume is explicitly set to 0. This ensures that strategies
+                    # do not misinterpret carried-forward volume as actual traded volume for the filled periods.
+                    # However, this can impact volume-based indicators and strategies. Strategies should be
+                    # aware of this behavior (e.g., by checking for Volume == 0 if it's unexpected).
                     df.loc[missing, 'Volume'] = 0
                 return df
             except sqlite3.OperationalError as e:

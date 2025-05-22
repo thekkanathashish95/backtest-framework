@@ -64,42 +64,92 @@ class Portfolio:
             'fees': fees
         })
 
-    def _calculate_exit_profit(self, action: str, abs_quantity: int, exit_price: float) -> tuple[float, float]:
+    def _calculate_exit_profit(self, date: pd.Timestamp, action: str, abs_quantity: int, exit_price: float) -> tuple[float, float]:
         remaining = abs_quantity
         total_profit = 0.0
         total_entry_fees = 0.0
         exit_fees = self._calculate_fees(abs_quantity * exit_price, action)
         
+        # Process FIFO queue to calculate profit/loss from closed positions.
+        # `remaining` is the quantity of the current exit trade still to be matched with entries.
+        # `position_queue` stores entries as dicts: {'quantity': signed_int, 'entry_price': float, 'fees': float}
         while remaining > 0 and self.position_queue:
-            entry = self.position_queue[0]
+            entry = self.position_queue[0]  # Get the oldest entry (FIFO)
+            
+            # `entry_qty` is the absolute quantity of the current entry in the queue.
+            # `qty_to_use` is the amount of this entry that will be consumed by the current exit trade.
+            # It's the minimum of what's left to close (`remaining`) and what this entry offers (`entry_qty`).
+            # Both `remaining` and `entry_qty` are positive at this point.
             entry_qty = abs(entry['quantity'])
+            if entry_qty == 0: # Should not happen if entries are added correctly
+                self.logger._log("ERROR", f"Skipping zero-quantity entry in position_queue: {entry}", date, {})
+                self.position_queue.pop(0) # Remove problematic entry
+                continue
+
             qty_to_use = min(remaining, entry_qty)
             
-            if action == 'Sell':
+            # Calculate profit based on the action (Sell closes long, Cover closes short)
+            # entry['quantity'] is signed, so entry['entry_price'] is for that direction.
+            if action == 'Sell': # Selling a long position
                 profit = (exit_price - entry['entry_price']) * qty_to_use
-            else:
+            else: # Covering a short position (action == 'Cover')
                 profit = (entry['entry_price'] - exit_price) * qty_to_use
             
             total_profit += profit
+            # Pro-rate the entry fees for the portion of the entry being closed.
             total_entry_fees += (qty_to_use / entry_qty) * entry['fees']
-            remaining -= qty_to_use
+            remaining -= qty_to_use # Reduce the quantity yet to be closed for this exit trade.
             
+            # Update or remove the entry from the queue
             if qty_to_use == entry_qty:
+                # Entire entry was consumed
                 self.position_queue.pop(0)
             else:
-                entry['quantity'] = entry['quantity'] - qty_to_use if entry['quantity'] > 0 else entry['quantity'] + qty_to_use
-                entry['fees'] *= (entry_qty - qty_to_use) / entry_qty
+                # Partial entry was consumed, update its quantity and fees.
+                # entry['quantity'] is signed. qty_to_use is positive.
+                if entry['quantity'] > 0: # Long entry
+                    entry['quantity'] -= qty_to_use
+                else: # Short entry
+                    entry['quantity'] += qty_to_use
+                # Adjust fees proportionally to the remaining quantity.
+                entry['fees'] *= (abs(entry['quantity']) / entry_qty) # (new_abs_qty / old_abs_qty)
         
+        # If remaining > 0, it means the position_queue was exhausted before the full
+        # quantity of the exit trade (`abs_quantity`) could be matched.
+        # This indicates an inconsistency: tried to close more than was open according to the queue.
+        # This should ideally be prevented by upstream logic ensuring `_current_quantity` matches the queue sum.
         if remaining > 0:
-            raise ValueError(f"Failed to close {remaining} units. Position queue exhausted")
+            # This error is critical as it implies a flaw in position state management.
+            # The quantity to close (`abs_quantity`) was derived from `_current_quantity` (or user input),
+            # which was apparently larger than the sum of quantities in `position_queue`.
+            error_msg = (
+                f"Failed to close {remaining} units of {abs_quantity} total for action {action}. "
+                f"Position queue exhausted. Current queue: {self.position_queue}. "
+                f"_current_quantity at trade execution start: {self._current_quantity + remaining if action in ['Sell', 'Cover'] else self._current_quantity - remaining} (estimated)" # Attempt to reconstruct
+            )
+            self.logger._log("CRITICAL", error_msg, pd.Timestamp.now(), {}) # Using current time for log if date is problematic
+            raise ValueError(error_msg)
         
         return total_profit - (total_entry_fees + exit_fees), exit_fees
 
     def _validate_position(self, date: pd.Timestamp):
+        # Calculates the sum of signed quantities from all entries in the position_queue.
         calc_quantity = sum(entry['quantity'] for entry in self.position_queue)
+        
+        # This sum should always match self._current_quantity, which is the official net position.
         if calc_quantity != self._current_quantity:
-            self.logger._log("ERROR", f"Position mismatch: position_queue sum {calc_quantity} vs current_quantity {self._current_quantity}", date, {})
+            # Log detailed information if a mismatch is found.
+            # This is a critical state inconsistency.
+            log_msg = (
+                f"Position mismatch detected at {date}: "
+                f"Sum of quantities in position_queue ({calc_quantity}) "
+                f"does not match _current_quantity ({self._current_quantity}). "
+                f"Position queue details: {self.position_queue}"
+            )
+            self.logger._log("ERROR", log_msg, date, {})
             self.skipped_trades += 1
+            # Depending on desired robustness, could raise an error to halt backtest:
+            # raise RuntimeError(log_msg)
 
     def _execute_trade(self, date: pd.Timestamp, price: float, symbol: str, quantity: int, 
                       action: str, reason: str, max_tradeable_volume: float, force_close: bool = False) -> bool:
@@ -114,8 +164,12 @@ class Portfolio:
             self.logger._log("ERROR", f"Invalid max_tradeable_volume: {max_tradeable_volume}", date, {})
             self.skipped_trades += 1
             return False
+        # If max_tradeable_volume is a float (and not infinity), it's rounded down (truncated)
+        # to the nearest whole number. This is a conservative approach to ensure that the
+        # trade quantity derived from it does not exceed actual tradable limits,
+        # as fractional shares are typically not supported by exchanges for many instruments.
         if isinstance(max_tradeable_volume, float) and not np.isinf(max_tradeable_volume):
-            self.logger._log("WARNING", f"Non-integer max_tradeable_volume {max_tradeable_volume}, rounding down", date, {})
+            self.logger._log("WARNING", f"Non-integer max_tradeable_volume {max_tradeable_volume}, rounding down to {int(max_tradeable_volume)}", date, {})
             max_tradeable_volume = int(max_tradeable_volume)
         if not price > 0 or np.isnan(price):
             self.logger._log("ERROR", f"Invalid price for {action}: {price}", date, {})
@@ -350,6 +404,3 @@ class Portfolio:
             'skipped_trades': self.skipped_trades,
             'debt': self.debt
         }
-
-    def execute_trades(self):
-        raise NotImplementedError("Batch trade execution is deprecated. Use process_bar for sequential processing.")

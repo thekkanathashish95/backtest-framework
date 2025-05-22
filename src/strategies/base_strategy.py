@@ -18,11 +18,3 @@ class BaseStrategy(ABC):
             int: Signal (1: Buy, -1: Sell, 0: Hold) or None if no signal is generated.
         """
         pass
-
-    def generate_signals(self) -> pd.DataFrame:
-        """
-        [DEPRECATED] Generate signals for the entire dataset (batch mode).
-        Use generate_signal for sequential processing.
-        Returns a DataFrame with 'Signal' column (1: Buy, -1: Sell, 0: Hold).
-        """
-        raise NotImplementedError("Batch signal generation is deprecated. Use generate_signal for sequential processing.")

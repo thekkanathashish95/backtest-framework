@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
@@ -5,6 +6,22 @@ import pandas as pd
 import numpy as np
 import json
 from typing import List
+import logging
+
+# Initialize logger
+logger = logging.getLogger(__name__)
+
+# General Note on NaN/inf values:
+# NaN (Not a Number) or inf (infinity) values can appear in DataFrames
+# due to various reasons:
+# 1. Upstream data issues: Missing data from the database or source files.
+# 2. Calculation errors:
+#    - Division by zero (e.g., in financial ratios like Sharpe if std dev is 0, or if a denominator in a custom metric is zero).
+#    - Mathematical operations that are undefined (e.g., log of a negative number).
+# 3. Data type issues: Operations on incompatible dtypes.
+# These values are converted to 'None' before JSON serialization to prevent errors,
+# but their occurrence (logged as warnings) should be investigated if frequent,
+# as they might indicate underlying problems in data generation or calculations.
 
 app = FastAPI()
 
@@ -17,7 +34,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_PATH = "/Users/ashishmathew/Documents/Development/AlgoTrader/database/algo_data.db"
+DB_PATH = os.environ.get("ALGO_DB_PATH", "database/algo_data.db")
 
 @app.get("/runs", response_model=List[dict])
 async def get_runs():
@@ -45,10 +62,35 @@ async def get_signals(run_id: str):
     print(f"Fetched {len(df)} signals for run_id {run_id}")
     df['timestamp'] = pd.to_datetime(df['timestamp']).apply(lambda x: x.isoformat())
     df['indicators'] = df['indicators'].apply(lambda x: json.loads(x) if x else {})
-    df = df.where(df.notna(), None)
-    df = df.replace([np.nan, np.inf, -np.inf], None)
+
+    # Log NaN and Inf occurrences before replacement
+    for col in df.columns:
+        # NaN check (safe for all dtypes)
+        nan_count = df[col].isna().sum()
+        if nan_count > 0:
+            logger.warning(f"NaN values found in column '{col}' of get_signals for run_id {run_id}: {nan_count} occurrences.")
+
+        # Inf check
+        if pd.api.types.is_numeric_dtype(df[col]):
+            inf_count = np.isinf(df[col]).sum()
+            if inf_count > 0:
+                logger.warning(f"Infinite values (inf, -inf) found in numeric column '{col}' of get_signals for run_id {run_id}: {inf_count} occurrences.")
+        elif df[col].dtype == object: # Includes strings, mixed types
+            try:
+                numeric_col = pd.to_numeric(df[col], errors='coerce')
+                if numeric_col.dtype.kind == 'f': # Check inf only if coerced to float
+                    inf_count = np.isinf(numeric_col).sum()
+                    if inf_count > 0:
+                        logger.warning(f"Infinite values (inf, -inf) found in object column '{col}' (after numeric coercion) of get_signals for run_id {run_id}: {inf_count} occurrences.")
+            except Exception as e: # Should be rare with errors='coerce'
+                logger.debug(f"Could not perform numeric coercion for Inf check on object column '{col}' in get_signals for run_id {run_id}: {e}")
+                
+    # Simplified replacement of NaN/inf to None
+    df = df.where(pd.notna(df), None)
+    
     none_counts = df.isnull().sum()
-    print(f"None values in columns: {none_counts.to_dict()}")
+    if none_counts.sum() > 0: # Only print if there are None values
+        print(f"None values in columns after conversion (get_signals for {run_id}): {none_counts[none_counts > 0].to_dict()}")
     return df.to_dict(orient="records")
 
 @app.get("/trades/{run_id}")
@@ -66,10 +108,35 @@ async def get_trades(run_id: str):
     
     print(f"Fetched {len(df)} trades for run_id {run_id}")
     df['timestamp'] = pd.to_datetime(df['timestamp']).apply(lambda x: x.isoformat())
-    df = df.where(df.notna(), None)
-    df = df.replace([np.nan, np.inf, -np.inf], None)
+
+    # Log NaN and Inf occurrences before replacement
+    for col in df.columns:
+        # NaN check (safe for all dtypes)
+        nan_count = df[col].isna().sum()
+        if nan_count > 0:
+            logger.warning(f"NaN values found in column '{col}' of get_trades for run_id {run_id}: {nan_count} occurrences.")
+
+        # Inf check
+        if pd.api.types.is_numeric_dtype(df[col]):
+            inf_count = np.isinf(df[col]).sum()
+            if inf_count > 0:
+                logger.warning(f"Infinite values (inf, -inf) found in numeric column '{col}' of get_trades for run_id {run_id}: {inf_count} occurrences.")
+        elif df[col].dtype == object: # Includes strings, mixed types
+            try:
+                numeric_col = pd.to_numeric(df[col], errors='coerce')
+                if numeric_col.dtype.kind == 'f': # Check inf only if coerced to float
+                    inf_count = np.isinf(numeric_col).sum()
+                    if inf_count > 0:
+                        logger.warning(f"Infinite values (inf, -inf) found in object column '{col}' (after numeric coercion) of get_trades for run_id {run_id}: {inf_count} occurrences.")
+            except Exception as e: # Should be rare with errors='coerce'
+                logger.debug(f"Could not perform numeric coercion for Inf check on object column '{col}' in get_trades for run_id {run_id}: {e}")
+
+    # Simplified replacement of NaN/inf to None
+    df = df.where(pd.notna(df), None)
+
     none_counts = df.isnull().sum()
-    print(f"None values in columns: {none_counts.to_dict()}")
+    if none_counts.sum() > 0: # Only print if there are None values
+        print(f"None values in columns after conversion (get_trades for {run_id}): {none_counts[none_counts > 0].to_dict()}")
     return df.to_dict(orient="records")
 
 @app.get("/metrics/{run_id}")
@@ -89,12 +156,49 @@ async def get_metrics(run_id: str):
     print(f"Fetched metrics for run_id {run_id}")
     if df.empty:
         return {}
+    
+    # Specific datetime conversions before general NaN/inf logging
     df['max_drawdown_start'] = pd.to_datetime(df['max_drawdown_start']).apply(lambda x: x.isoformat() if pd.notna(x) else None)
     df['max_drawdown_end'] = pd.to_datetime(df['max_drawdown_end']).apply(lambda x: x.isoformat() if pd.notna(x) else None)
-    df = df.where(df.notna(), None)
-    df = df.replace([np.nan, np.inf, -np.inf], None)
+
+    # Log NaN and Inf occurrences before replacement
+    for col in df.columns:
+        # Skip already processed datetime columns that are now strings or None
+        if col in ['max_drawdown_start', 'max_drawdown_end'] and df[col].apply(lambda x: isinstance(x, (str, type(None)))).all():
+            # Already handled, may log NaNs if original was NaT before conversion to None
+            nan_count = df[col].isna().sum() # isna() still works if column became None due to NaT
+            if nan_count > 0:
+                 logger.warning(f"NaN values (likely from NaT) found in datetime-converted column '{col}' of get_metrics for run_id {run_id}: {nan_count} occurrences.")
+            continue
+
+        # NaN check (safe for all dtypes)
+        nan_count = df[col].isna().sum()
+        if nan_count > 0:
+            logger.warning(f"NaN values found in column '{col}' of get_metrics for run_id {run_id}: {nan_count} occurrences.")
+
+        # Inf check
+        if pd.api.types.is_numeric_dtype(df[col]):
+            inf_count = np.isinf(df[col]).sum()
+            if inf_count > 0:
+                logger.warning(f"Infinite values (inf, -inf) found in numeric column '{col}' of get_metrics for run_id {run_id}: {inf_count} occurrences.")
+        elif df[col].dtype == object: # Includes strings, mixed types
+            try:
+                numeric_col = pd.to_numeric(df[col], errors='coerce')
+                if numeric_col.dtype.kind == 'f': # Check inf only if coerced to float
+                    inf_count = np.isinf(numeric_col).sum()
+                    if inf_count > 0:
+                        logger.warning(f"Infinite values (inf, -inf) found in object column '{col}' (after numeric coercion) of get_metrics for run_id {run_id}: {inf_count} occurrences.")
+            except Exception as e: # Should be rare with errors='coerce'
+                 logger.debug(f"Could not perform numeric coercion for Inf check on object column '{col}' in get_metrics for run_id {run_id}: {e}")
+
+    # Simplified replacement of NaN/inf to None
+    # This handles actual np.nan, np.inf, -np.inf. String 'inf' etc. are not directly handled by pd.notna unless coerced.
+    # However, the database query for metrics likely returns numeric types for these.
+    df = df.where(pd.notna(df), None)
+
     none_counts = df.isnull().sum()
-    print(f"None values in columns: {none_counts.to_dict()}")
+    if none_counts.sum() > 0: # Only print if there are None values
+        print(f"None values in columns after conversion (get_metrics for {run_id}): {none_counts[none_counts > 0].to_dict()}")
     return df.to_dict(orient="records")[0]
 
 @app.get("/portfolio_final/{run_id}")
