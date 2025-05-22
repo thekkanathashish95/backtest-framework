@@ -1,35 +1,23 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Type, Callable
+from typing import Dict, List, Callable
 from itertools import product
 from src.backtest.metrics import Metrics
-from src.strategies.base_strategy import BaseStrategy
+from src.strategies.registry import STRATEGY_REGISTRY
 import os
 from datetime import datetime
 import logging
+import yaml
 
 class ParameterOptimizer:
-    def __init__(self, backtest_func: Callable, strategy_class: Type[BaseStrategy], 
-                 param_grid: Dict[str, List], metric: str = 'Sharpe Ratio', 
-                 output_dir: str = 'reports'):
-        """
-        Optimize strategy parameters using sequential grid search.
-        
-        Args:
-            backtest_func: Function that runs a backtest and returns a summary dict.
-            strategy_class: Strategy class to optimize (inherits from BaseStrategy).
-            param_grid: Dict of parameter names and lists of values to test.
-            metric: Metric to optimize (e.g., 'Sharpe Ratio', 'Annualized Return (%)').
-            output_dir: Directory to save results.
-        """
+    def __init__(self, backtest_func: Callable, param_grid: Dict[str, List], 
+                 metric: str = 'Sharpe Ratio', output_dir: str = 'reports'):
         self.backtest_func = backtest_func
-        self.strategy_class = strategy_class
         self.param_grid = param_grid
         self.metric = metric
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
         
-        # Set up logging
         self.logger = logging.getLogger('ParameterOptimizer')
         if not self.logger.handlers:
             handler = logging.FileHandler(os.path.join(output_dir, 'optimizer.log'))
@@ -38,7 +26,6 @@ class ParameterOptimizer:
             self.logger.setLevel(logging.INFO)
         
     def generate_param_combinations(self) -> List[Dict[str, any]]:
-        """Generate all parameter combinations for grid search."""
         param_names = list(self.param_grid.keys())
         param_values = [self.param_grid[name] for name in param_names]
         combinations = [dict(zip(param_names, values)) for values in product(*param_values)]

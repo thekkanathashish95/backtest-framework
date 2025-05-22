@@ -2,18 +2,28 @@ database:
     db_path: "/Users/ashishmathew/Documents/Development/AlgoTrader/database/algo_data.db"
 
 
+# strategy:
+#   type: "RSI"
+#   params:
+#     rsi_period: 12
+#     overbought: 80
+#     oversold: 30
+#     cooldown_minutes: 30
+
 strategy:
-  rsi_period: 12
-  overbought: 80
-  oversold: 30
-  wait_period: 5
+  type: "MACD"
+  params:
+    fast_period: 12
+    slow_period: 26
+    signal_period: 9
+    cooldown_minutes: 30
 
 portfolio:
   initial_cash: 100000
-  buy_cash_pct: 0.5
-  short_cash_pct: 0.3
-  stop_loss_pct: 0.01
-  take_profit_pct: 0.03
+  buy_cash_pct: 0.95
+  short_cash_pct: 0.95
+  stop_loss_pct: 0.03
+  take_profit_pct: 0.015
 
 transaction_costs:
   brokerage_rate: 0.0003
@@ -25,7 +35,7 @@ transaction_costs:
   stamp_rate: 0.00003
 
 slippage:
-  slippage_pct: 0.001  # 0.1% slippage
+  slippage_pct: 0.001
 
 backtest:
   symbol: "ADANIENT"
@@ -40,20 +50,24 @@ stress_test:
   probability: 0.01
   max_volume_pct: 0.1
 
-optimization:
-  metric: "Sharpe Ratio"
-  n_jobs: -1
-  param_grid:
-    rsi_period: [12, 14, 16]
-    overbought: [80, 90]
-    oversold: [25, 30]
-    wait_period: [0, 5]
-    stop_loss_pct: [0.01, 0.02, 0.03]
-    take_profit_pct: [0.03, 0.05, 0.07]
-
 # optimization:
 #   metric: "Sharpe Ratio"
 #   n_jobs: -1
 #   param_grid:
-#     rsi_period: [12, 14]
-#     wait_period: [15]
+#     rsi_period: [12, 14, 16]
+#     overbought: [80, 90]
+#     oversold: [25, 30]
+#     cooldown_minutes: [15, 30, 60]
+#     stop_loss_pct: [0.02, 0.03, 0.04]
+#     take_profit_pct: [0.01, 0.015, 0.02]
+
+
+optimization:
+  metric: "Sharpe Ratio"
+  param_grid:
+    fast_period: [8, 12, 16]
+    slow_period: [20, 26, 32]
+    signal_period: [6, 9, 12]
+    cooldown_minutes: [15, 30, 60]
+    stop_loss_pct: [0.02, 0.03, 0.04]
+    take_profit_pct: [0.01, 0.015, 0.02]

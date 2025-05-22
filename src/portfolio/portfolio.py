@@ -269,11 +269,12 @@ class Portfolio:
             self._update_portfolio_value(date, price)
             return
         
-        # Check wait period
-        if self.last_trade_date is not None:
+        # Check cooldown period
+        cooldown_minutes = getattr(self.strategy, 'cooldown_minutes', 0)
+        if self.last_trade_date is not None and cooldown_minutes > 0:
             time_since_last_trade = (date - self.last_trade_date).total_seconds() / 60
-            if time_since_last_trade < self.strategy.wait_period:
-                self.logger._log("DEBUG", f"Skipped signal {signal}: within {self.strategy.wait_period}-minute wait period (time since last trade: {time_since_last_trade:.2f} minutes)", date, {})
+            if time_since_last_trade < cooldown_minutes:
+                self.logger._log("DEBUG", f"Skipped signal {signal}: within {cooldown_minutes}-minute cooldown period (time since last trade: {time_since_last_trade:.2f} minutes)", date, {})
                 self._update_portfolio_value(date, price)
                 return
 

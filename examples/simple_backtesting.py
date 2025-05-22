@@ -1,40 +1,37 @@
 import pandas as pd
 import yaml
 from src.core.data_handler import DataHandler
-from src.strategies.rsi_strategy import RSIStrategy
 from src.portfolio.portfolio import Portfolio
 from src.logging.trade_logger import TradeLogger
 from src.backtest.stress_test import StressTester
 from src.backtest.visualizer import Visualizer
 from src.backtest.optimizer import ParameterOptimizer
+from src.strategies.registry import STRATEGY_REGISTRY
 import argparse
 
 def run_backtest_with_params(stress_test: bool = False, strategy_params: dict = None):
-    """
-    Run a backtest with specified parameters.
-    
-    Args:
-        stress_test: Whether to apply stress testing.
-        strategy_params: Dictionary of strategy parameters.
-    
-    Returns:
-        Dictionary containing portfolio summary.
-    """
     with open('config/config.yaml', 'r') as f:
         config = yaml.safe_load(f)
 
     db_path = config['database']['db_path']
-    default_strategy_params = config['strategy']
+    strategy_config = config['strategy']
+    strategy_type = config['strategy']['type']
     portfolio_params = config['portfolio']
     transaction_costs = config['transaction_costs']
     slippage_params = config['slippage']
     backtest_params = config['backtest']
     stress_test_params = config['stress_test'] if stress_test else None
     
-    # Use provided strategy_params or fallback to config
-    strategy_params = strategy_params or default_strategy_params
+    strategy_params = strategy_params or strategy_config.get('params', {})
+    if strategy_type not in STRATEGY_REGISTRY:
+        raise ValueError(f"Unknown strategy type: {strategy_type}")
 
-    logger = TradeLogger(log_file=backtest_params['log_file_path'], db_path=db_path)
+    logger = TradeLogger(
+        log_file=backtest_params['log_file_path'],
+        db_path=db_path,
+        strategy_type=strategy_type,
+        strategy_config=strategy_params
+    )
 
     dh = DataHandler(
         tradingsymbol=backtest_params['symbol'],
@@ -47,7 +44,6 @@ def run_backtest_with_params(stress_test: bool = False, strategy_params: dict = 
     print("Data summary:")
     print(dh.data.describe())
 
-    # Apply stress tests if enabled
     if stress_test:
         stress_tester = StressTester(dh.data, seed=42)
         dh.data = stress_tester.apply_price_shock(
@@ -59,19 +55,17 @@ def run_backtest_with_params(stress_test: bool = False, strategy_params: dict = 
         )
         print("Applied stress tests: ±10% price shocks (1% probability), 10% volume limit")
 
-    rsi_strategy = RSIStrategy(
+    strategy_class = STRATEGY_REGISTRY[strategy_type]
+    strategy = strategy_class(
         data_handler=dh,
-        rsi_period=strategy_params['rsi_period'],
-        overbought=strategy_params['overbought'],
-        oversold=strategy_params['oversold'],
-        wait_period=strategy_params['wait_period'],
-        logger=logger
+        logger=logger,
+        **strategy_params
     )
 
     portfolio = Portfolio(
         initial_cash=portfolio_params['initial_cash'],
         data_handler=dh,
-        strategy=rsi_strategy,
+        strategy=strategy,
         logger=logger,
         transaction_costs=transaction_costs,
         slippage_pct=slippage_params['slippage_pct'],
@@ -88,7 +82,6 @@ def run_backtest_with_params(stress_test: bool = False, strategy_params: dict = 
         if logger:
             logger._log("DEBUG", f"Processed bar at {date}", date, {})
 
-        # Check if this is the last bar of the day (15:30 IST) or the date has changed
         current_date = date.date()
         is_last_bar_of_day = (date.time().hour == 15 and date.time().minute == 30) or (i == len(dh.data.index) - 1)
         if is_last_bar_of_day and last_printed_date != current_date:
@@ -128,9 +121,12 @@ def main():
         config = yaml.safe_load(f)
     
     if args.optimize:
+        strategy_type = config['strategy']['type']
+        if strategy_type not in STRATEGY_REGISTRY:
+            raise ValueError(f"Unknown strategy type: {strategy_type}")
         optimizer = ParameterOptimizer(
             backtest_func=run_backtest_with_params,
-            strategy_class=RSIStrategy,
+            strategy_class=STRATEGY_REGISTRY[strategy_type],
             param_grid=config['optimization']['param_grid'],
             metric=config['optimization']['metric'],
             output_dir='reports'

@@ -55,20 +55,24 @@ class TableCreator:
             )
         ''')
 
-        # Create runs table
+        # Create runs table with strategy_type and strategy_config
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS runs (
                 run_id TEXT PRIMARY KEY,
-                initiated_time TEXT NOT NULL
+                initiated_time TEXT NOT NULL,
+                strategy_type TEXT NOT NULL,
+                strategy_config TEXT NOT NULL
             )
         ''')
 
+        # Create signal_logs table with generic indicators and strategy_type
         self.cursor.execute('''
             CREATE TABLE IF NOT EXISTS signal_logs (
                 run_id TEXT NOT NULL,
                 timestamp TEXT NOT NULL,
                 price REAL NOT NULL,
-                rsi REAL,
+                strategy_type TEXT NOT NULL,
+                indicators TEXT NOT NULL,
                 signal INTEGER,
                 PRIMARY KEY (run_id, timestamp)
             )
@@ -138,7 +142,7 @@ class TableCreator:
 # Usage
 def main():
     table_creator = TableCreator("/Users/ashishmathew/Documents/Development/AlgoTrader/database/algo_data.db")
-    # table_creator.drop_tables()
+    table_creator.drop_tables()
     table_creator.create_tables()
     table_creator.query_tables()
 

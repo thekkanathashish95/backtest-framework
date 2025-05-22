@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import pandas as pd
 import numpy as np
+import json
 from typing import List
 
 app = FastAPI()
@@ -10,7 +11,7 @@ app = FastAPI()
 # Allow CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Adjust for production
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -22,9 +23,10 @@ DB_PATH = "/Users/ashishmathew/Documents/Development/AlgoTrader/database/algo_da
 async def get_runs():
     """Fetch all run_ids and their initiated_time."""
     conn = sqlite3.connect(DB_PATH)
-    query = "SELECT run_id, initiated_time FROM runs ORDER BY initiated_time DESC"
+    query = "SELECT run_id, initiated_time, strategy_type, strategy_config FROM runs ORDER BY initiated_time DESC"
     df = pd.read_sql_query(query, conn)
     conn.close()
+    df['strategy_config'] = df['strategy_config'].apply(lambda x: json.loads(x) if x else {})
     return df.to_dict(orient="records")
 
 @app.get("/signals/{run_id}")
@@ -32,7 +34,7 @@ async def get_signals(run_id: str):
     """Fetch signal_logs data for a given run_id."""
     conn = sqlite3.connect(DB_PATH)
     query = """
-        SELECT timestamp, price, rsi, signal
+        SELECT timestamp, price, strategy_type, indicators, signal
         FROM signal_logs
         WHERE run_id = ?
         ORDER BY timestamp
@@ -42,6 +44,7 @@ async def get_signals(run_id: str):
     
     print(f"Fetched {len(df)} signals for run_id {run_id}")
     df['timestamp'] = pd.to_datetime(df['timestamp']).apply(lambda x: x.isoformat())
+    df['indicators'] = df['indicators'].apply(lambda x: json.loads(x) if x else {})
     df = df.where(df.notna(), None)
     df = df.replace([np.nan, np.inf, -np.inf], None)
     none_counts = df.isnull().sum()
@@ -110,7 +113,7 @@ async def get_portfolio_final(run_id: str):
     
     print(f"Fetched final portfolio value for run_id {run_id}")
     if df.empty:
-        return {"total": null}
+        return {"total": None}
     total = df.iloc[0]['total']
     total = None if pd.isna(total) else float(total)
     return {"total": total}

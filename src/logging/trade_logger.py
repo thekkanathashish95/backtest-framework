@@ -8,10 +8,12 @@ import pandas as pd
 from typing import Optional, Dict
 
 class TradeLogger:
-    def __init__(self, log_file: str, db_path: str):
+    def __init__(self, log_file: str, db_path: str, strategy_type: str, strategy_config: Dict):
         self.run_id = str(uuid.uuid4())
         self.run_initiated_time = datetime.now().astimezone()
         self.db_path = db_path
+        self.strategy_type = strategy_type
+        self.strategy_config = strategy_config
         self.logger = logging.getLogger(f"TradeLogger_{self.run_id}")
         self.logger.setLevel(logging.INFO)
 
@@ -35,41 +37,40 @@ class TradeLogger:
         try:
             self.cursor.execute(
                 """
-                INSERT INTO runs (run_id, initiated_time)
-                VALUES (?, ?)
+                INSERT INTO runs (run_id, initiated_time, strategy_type, strategy_config)
+                VALUES (?, ?, ?, ?)
                 """,
-                (self.run_id, self.run_initiated_time.isoformat())
+                (self.run_id, self.run_initiated_time.isoformat(), self.strategy_type, json.dumps(self.strategy_config))
             )
             self.conn.commit()
         except sqlite3.Error as e:
             self.conn.rollback()
             self.logger.error(f"Failed to log run initiation: {e}", extra={'run_id': self.run_id, 'log_type': 'ERROR'})
             raise
-    
-    def log_signal(self, timestamp: pd.Timestamp, signal: int, rsi: float, close: float):
-        message = f"Signal: {signal}, RSI: {rsi:.2f}, Close: {close}"
-        details = {"Signal": signal, "RSI": rsi, "Close": close}
+
+    def log_signal(self, timestamp: pd.Timestamp, signal: int, indicators: Dict, price: float):
+        message = f"Signal: {signal}, Indicators: {json.dumps(indicators)}, Price: {price:.2f}"
+        details = {"Signal": signal, "Indicators": indicators, "Price": price}
         self._log("SIGNAL", message, timestamp, details)
 
-    
-    def log_signal_data(self, timestamp: pd.Timestamp, price: float, rsi: float, signal: Optional[int]):
-        """Log RSI, price, and signal data to signal_logs table."""
+    def log_signal_data(self, timestamp: pd.Timestamp, price: float, indicators: Dict, signal: Optional[int]):
+        """Log indicator data and signal to signal_logs table."""
         if timestamp.tzinfo is None:
             timestamp = timestamp.tz_localize('Asia/Kolkata')
         else:
             timestamp = timestamp.tz_convert('Asia/Kolkata')
         
-        message = f"Signal Data: Price: {price:.2f}, RSI: {rsi:.2f}, Signal: {signal}"
-        details = {"Price": price, "RSI": rsi, "Signal": signal}
+        message = f"Signal Data: Price: {price:.2f}, Indicators: {json.dumps(indicators)}, Signal: {signal}"
+        details = {"Price": price, "Indicators": indicators, "Signal": signal}
         self._log("SIGNAL_DATA", message, timestamp, details)
 
         try:
             self.cursor.execute(
                 """
-                INSERT INTO signal_logs (run_id, timestamp, price, rsi, signal)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO signal_logs (run_id, timestamp, price, strategy_type, indicators, signal)
+                VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (self.run_id, timestamp.isoformat(), price, rsi, signal)
+                (self.run_id, timestamp.isoformat(), price, self.strategy_type, json.dumps(indicators), signal)
             )
             self.conn.commit()
         except sqlite3.Error as e:
